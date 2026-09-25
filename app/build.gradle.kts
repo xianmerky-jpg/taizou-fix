@@ -1,11 +1,29 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
 
+// Release signing credentials: local.properties (local/AIDE builds) or
+// STORE_* environment variables (CI). Falls back to the debug keystore so the
+// APK is always signed and installable even when no release key is configured.
+fun loadSigningProperty(name: String, envName: String, localProps: Properties): String? {
+    return localProps.getProperty(name)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(envName)?.takeIf { it.isNotBlank() }
+}
+
+val localProps = Properties().apply {
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     namespace = "com.taizou.paid"
     compileSdk = 34
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "com.taizou.paid"
@@ -20,8 +38,6 @@ android {
             abiFilters.add("arm64-v8a")
         }
 
-        ndkVersion = "26.1.10909125"
-
         externalNativeBuild {
             cmake {
                 arguments += "-DANDROID_STL=c++_shared"
@@ -31,9 +47,26 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val storeFileProp = loadSigningProperty("storeFile", "STORE_FILE", localProps)
+            if (!storeFileProp.isNullOrBlank() && rootProject.file(storeFileProp).exists()) {
+                storeFile = rootProject.file(storeFileProp)
+                storePassword = loadSigningProperty("storePassword", "STORE_PASSWORD", localProps)
+                keyAlias = loadSigningProperty("keyAlias", "KEY_ALIAS", localProps)
+                keyPassword = loadSigningProperty("keyPassword", "KEY_PASSWORD", localProps)
+            }
+            // Otherwise left unconfigured below and the release build type falls
+            // back to the debug keystore so output stays signed/installable.
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release").takeIf {
+                it.storeFile?.exists() == true
+            } ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

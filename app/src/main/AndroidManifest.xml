@@ -3,6 +3,13 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.taizou.paid">
 
+    <!-- Explicit SDK levels. Gradle injects min/targetSdk from app/build.gradle.kts,
+         but AIDE's legacy builder ignores Gradle, so declare them here as well to
+         keep every build output installable (missing uses-sdk defaults targetSdk
+         to 1, which Android 14+ refuses to install). Values must match build.gradle.kts. -->
+    <uses-sdk
+        android:minSdkVersion="21"
+        android:targetSdkVersion="34" />
 
     <!-- Make hardware features optional so the APK installs on all devices -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />

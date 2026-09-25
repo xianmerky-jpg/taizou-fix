@@ -21,6 +21,11 @@ Thumbs.db
 *.ap_
 *.dex
 
+# AIDE legacy (non-Gradle) intermediates - the installable APK must come from
+# the Gradle build (app/build/outputs/apk/), never from these directories.
+app/src/main/bin/
+app/src/main/gen/
+
 # Native
 *.so
 *.o

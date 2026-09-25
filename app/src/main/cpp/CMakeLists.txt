@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("taizou_core" LANGUAGES CXX)
 
-# This project is distributed with ARM64 native payloads. Build only the matching ABI.
-set(CMAKE_ANDROID_ARCH_ABI arm64-v8a)
+# ABI is driven by Gradle (ndk.abiFilters = arm64-v8a). Do not hard-code
+# CMAKE_ANDROID_ARCH_ABI/ANDROID_ABI here; Gradle passes the correct
+# -DANDROID_ABI per build, and a hard-coded value would silently conflict
+# if the filter list ever changes.
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
