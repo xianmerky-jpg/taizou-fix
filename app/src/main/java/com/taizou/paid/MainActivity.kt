@@ -173,8 +173,12 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         super.onResume()
         // If START was tapped while overlay permission was missing, the system
         // permission screen was opened instead. Retry now if granted.
-        if (startRequested && !overlayShown && overlayView != null && Settings.canDrawOverlays(this)) {
-            showOverlay()
+        if (startRequested && !overlayShown && overlayView != null) {
+            if (Settings.canDrawOverlays(this)) {
+                showOverlay()
+            } else {
+                Toast.makeText(this, "Still missing: enable 'Display over other apps', then press Back", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -594,7 +598,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                     ecgView?.let { view ->
                         val w = view.width
                         val h = view.height
-                        if (h <= 0) return@let
+                        if (w <= 0 || h <= 0) return@let
 
                         val centerY = h / 2f
                         step++
