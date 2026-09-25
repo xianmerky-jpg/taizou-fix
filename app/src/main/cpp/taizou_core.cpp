@@ -1152,6 +1152,10 @@ Java_com_taizou_paid_TaizouNative_setEspMatrix(JNIEnv* env, jobject thiz, jfloat
     return taizou::g_instance->setEspMatrix(m) ? JNI_TRUE : JNI_FALSE;
 }
 
+// These ESP method definitions landed after the namespace close above;
+// reopen it (legal C++) so the TaizouCore:: qualifiers resolve.
+namespace taizou {
+
 bool TaizouCore::espReadList(int fd, uint64_t listAddr, std::vector<uint64_t>& pawns) const {
     pawns.clear();
     if (listAddr == 0) return false;
@@ -1366,3 +1370,5 @@ int TaizouCore::espTotalEnemies() const {
 int TaizouCore::espTotalBots() const {
     return espTotalBots_;
 }
+
+} // namespace taizou

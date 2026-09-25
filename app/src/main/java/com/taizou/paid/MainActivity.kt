@@ -517,8 +517,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private fun hideEspWindow() {
         stopEspLoop()
         espView?.let { v ->
+            if (v.parent == null) return@let
             try {
-                if (v.parent != null) overlayWindowManager?.removeView(v)
+                overlayWindowManager?.removeView(v)
             } catch (e: Exception) {
                 Log.e("Overlay", "Failed to remove ESP view", e)
             }
@@ -567,7 +568,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                                 EspOverlayView.Item(
                                     out12[0], out12[1], out12[2], out12[3],
                                     out12[4], out12[5], out12[6], out12[7], out12[8],
-                                    out12[9] != 0f, TaizouNative.getEspName(i), bones
+                                    out12[9] != 0f, out12[10] != 0f,
+                                    TaizouNative.getEspName(i), bones
                                 )
                             )
                         }
