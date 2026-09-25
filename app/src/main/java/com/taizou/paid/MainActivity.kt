@@ -220,6 +220,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             if (checked) {
                 startRequested = true
                 waterDropAnimation(binding.start, 150)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                    Toast.makeText(this, "Allow 'Display over other apps' for TAIZOU, then press Back", Toast.LENGTH_LONG).show()
+                }
                 controller.onStartClick()
             } else {
                 startRequested = false
@@ -424,11 +427,13 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                     return
                 }
                 overlayShown = true
+                Toast.makeText(this, "Floating menu shown", Toast.LENGTH_SHORT).show()
                 overlayBinding?.floatingEyeIcon?.visibility = View.GONE
                 overlayBinding?.menu?.visibility = View.VISIBLE
                 showCustomToast("IMGUI Restored")
                 speakText("IMGUI Restored")
             } else {
+                Toast.makeText(this, "Overlay permission still missing", Toast.LENGTH_LONG).show()
                 requestOverlayPermission()
             }
         }
