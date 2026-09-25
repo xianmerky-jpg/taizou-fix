@@ -376,8 +376,12 @@ std::vector<uint8_t> TaizouCore::hexStringToBytes(const std::string& hex) {
 
     for (size_t i = 0; i < clean_hex.length(); i += 2) {
         if (i + 1 < clean_hex.length()) {
-            std::string byte_str = clean_hex.substr(i, 2);
-            bytes.push_back(static_cast<uint8_t>(std::stoul(byte_str, nullptr, 16)));
+            try {
+                std::string byte_str = clean_hex.substr(i, 2);
+                bytes.push_back(static_cast<uint8_t>(std::stoul(byte_str, nullptr, 16)));
+            } catch (...) {
+                return {};
+            }
         }
     }
     return bytes;

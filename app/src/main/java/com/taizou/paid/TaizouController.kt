@@ -115,8 +115,13 @@ class TaizouTTS(private val context: Context) : TextToSpeech.OnInitListener {
     private fun processQueue() {
         if (processing || queue.isEmpty() || !initialized.get()) return
         processing = true
-        val text = queue.removeAt(0)
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "taizou_tts")
+        try {
+            val text = queue.removeAt(0)
+            tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "taizou_tts")
+        } finally {
+            processing = false
+        }
+        if (queue.isNotEmpty()) processQueue()
     }
 
     fun shutdown() {
@@ -151,8 +156,12 @@ class TaizouController(
 
     @OnLifecycleEvent(Lifecycle.Event.ON_CREATE)
     fun onCreate() {
-        TaizouNative.init(context)
-        loadConfig()
+        // Native init runs popen(su)/file I/O that can block; keep it off the
+        // UI thread. TTS queue works regardless (it buffers until ready).
+        Thread {
+            TaizouNative.init(context)
+            loadConfig()
+        }.start()
         speakWelcome()
     }
 
@@ -169,8 +178,20 @@ class TaizouController(
         // The su probe can block on a root-manager prompt; never run it on
         // the UI thread (would look like a freeze/crash on START).
         Thread { TaizouNative.checkRoot() }.start()
-        if (!((context as? TaizouApplication)?.hasOverlayPermission() ?: false)) {
-            (context as? TaizouApplication)?.requestOverlayPermission()
+        // NOTE: context is the Activity, never the Application: check the
+        // permission directly instead of casting to TaizouApplication
+        // (that cast always yields null, which made START silently do nothing).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
+            try {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${context.packageName}")
+                )
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e("TaizouController", "Failed to open overlay settings", e)
+            }
             tts.speak("Please allow display over other apps, then press back")
             return
         }
@@ -192,10 +213,17 @@ class TaizouController(
     }
 
     private fun launchCODM() {
-        val pm = context.packageManager
-        val intent = pm.getLaunchIntentForPackage("com.garena.game.codm")
-        if (intent != null) {
-            context.startActivity(intent)
+        try {
+            val pm = context.packageManager
+            val intent = pm.getLaunchIntentForPackage("com.garena.game.codm")
+            if (intent != null) {
+                context.startActivity(intent)
+            } else {
+                Log.e("TaizouController", "CODM launch intent is null (not installed/invisible)")
+                tts.speak("Call of Duty Mobile is not installed")
+            }
+        } catch (e: Exception) {
+            Log.e("TaizouController", "Failed to launch CODM", e)
         }
     }
 
@@ -305,9 +333,13 @@ class TaizouController(
     }
 
     private fun openUrl(url: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("TaizouController", "No app to open $url", e)
+        }
     }
 
     private fun showPriceDialog() {

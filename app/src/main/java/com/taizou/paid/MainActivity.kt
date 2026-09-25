@@ -220,7 +220,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         styleButton(binding.cardStop, binding.stop, 0xFF6E6E6E.toInt(), 0xFF1A1A1A.toInt())
         styleButton(binding.cardLaunch, binding.game, 0xFF6E6E6E.toInt(), 0xFF1A1A1A.toInt())
 
-        binding.start.setOnCheckedChangeListener { _, checked ->
+        binding.start.setOnCheckedChangeListener { view, checked ->
+            // Ignore programmatic/state-restoration changes; only real taps.
+            if (!view.isPressed) return@setOnCheckedChangeListener
             if (checked) {
                 startRequested = true
                 waterDropAnimation(binding.start, 150)
@@ -229,8 +231,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 }
                 controller.onStartClick()
             } else {
+                // Toggling START off only hides the menu; the STOP button exits.
                 startRequested = false
-                controller.onStopClick()
+                hideOverlay()
             }
         }
 
@@ -450,7 +453,11 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
 
     private fun hideOverlay() {
         if (overlayShown) {
-            overlayWindowManager?.removeView(overlayView)
+            try {
+                overlayWindowManager?.removeView(overlayView)
+            } catch (e: Exception) {
+                Log.e("Overlay", "Failed to remove overlay view", e)
+            }
             overlayShown = false
             overlayBinding?.floatingEyeIcon?.visibility = View.VISIBLE
             showCustomToast("IMGUI Hidden")
@@ -591,6 +598,15 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private fun setupECGAnimation() {
         ecgRunning = true
         ecgTimer = Thread {
+            try {
+                setupECGLoop()
+            } catch (ignored: InterruptedException) {
+                // Stopped via interrupt() in onDestroy; not an error.
+            }
+        }.apply { start() }
+    }
+
+    private fun setupECGLoop() {
             var step = 0
             val points = mutableListOf<Float>()
             val maxPoints = 50
@@ -626,7 +642,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                     }
                 }
             }
-        }.apply { start() }
     }
 
     private fun drawECG(view: View, points: List<Float>, w: Int, h: Int, centerY: Float, maxPoints: Int) {

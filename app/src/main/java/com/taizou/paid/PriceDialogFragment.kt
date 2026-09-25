@@ -23,8 +23,13 @@ class PriceDialogFragment : DialogFragment() {
     private val allButtons = mutableListOf<Button>()
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        // NOTE: views are wired here, not in onViewCreated: content supplied
+        // via setView() never triggers onViewCreated, which left every plan
+        // button dead.
+        val content = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_price, null)
+        wireViews(content)
         return MaterialAlertDialogBuilder(requireContext())
-            .setView(LayoutInflater.from(requireContext()).inflate(R.layout.dialog_price, null))
+            .setView(content)
             .create()
     }
 
@@ -33,9 +38,7 @@ class PriceDialogFragment : DialogFragment() {
         dialog?.window?.setBackgroundDrawableResource(android.R.color.transparent)
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-
+    private fun wireViews(view: View) {
         selectedPlanText = view.findViewById(R.id.selectedPlan)
         priceText = view.findViewById(R.id.priceText)
         val plansContainer = view.findViewById<LinearLayout>(R.id.plansContainer)
