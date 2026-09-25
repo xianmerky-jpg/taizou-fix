@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -58,6 +59,8 @@ import com.taizou.paid.PriceDialogFragment
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.max
+import kotlin.math.min
 
 class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListener, LifecycleObserver {
 
@@ -180,9 +183,9 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
 
     private fun setupMainUI() {
         // Style buttons
-        styleButton(binding.cardStart, binding.start, 0xFF6E6E6E, 0xFF1A1A1A)
-        styleButton(binding.cardStop, binding.stop, 0xFF6E6E6E, 0xFF1A1A1A)
-        styleButton(binding.cardLaunch, binding.game, 0xFF6E6E6E, 0xFF1A1A1A)
+        styleButton(binding.cardStart, binding.start, 0xFF6E6E6E.toInt(), 0xFF1A1A1A.toInt())
+        styleButton(binding.cardStop, binding.stop, 0xFF6E6E6E.toInt(), 0xFF1A1A1A.toInt())
+        styleButton(binding.cardLaunch, binding.game, 0xFF6E6E6E.toInt(), 0xFF1A1A1A.toInt())
 
         binding.start.setOnCheckedChangeListener { _, checked ->
             if (checked) {
@@ -220,7 +223,7 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
         }
     }
 
-    private fun styleButton(card: CardView, button: View, outlineColor: Int, fillColor: Int) {
+    private fun styleButton(card: View, button: View, outlineColor: Int, fillColor: Int) {
         val drawable = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 20f
@@ -230,7 +233,7 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
         button.background = drawable
     }
 
-    private fun waterDropAnimation(view: View, duration: Int) {
+    private fun waterDropAnimation(view: View, duration: Long) {
         view.animate()
             .scaleX(0.8f).scaleY(0.8f)
             .setDuration(duration / 3)
@@ -288,14 +291,15 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
 
     private fun setupOverlayViews() {
         overlayBinding?.apply {
-            // Setup menu buttons
-            menu1 = root.findViewById(R.id.menu1)
-            menu2 = root.findViewById(R.id.menu2)
-            menu3 = root.findViewById(R.id.menu3)
-            menu4 = root.findViewById(R.id.menu4)
-            menu6 = root.findViewById(R.id.menu6)
+            // Setup menu buttons (bare names are the view-binding views, which
+            // would otherwise shadow the activity fields being assigned here)
+            this@MainActivity.menu1 = menu1
+            this@MainActivity.menu2 = menu2
+            this@MainActivity.menu3 = menu3
+            this@MainActivity.menu4 = menu4
+            this@MainActivity.menu6 = menu6
 
-            pg = root.findViewById(R.id.pg)
+            this@MainActivity.pg = pg
             pageAdapter = PageAdapter(this@MainActivity)
             pg?.adapter = pageAdapter
             pg?.offscreenPageLimit = 5
@@ -327,28 +331,31 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
             hideBtn.setOnClickListener { hideOverlay() }
             floatingEyeIcon.setOnClickListener { showOverlay() }
 
-            win_move.setOnTouchListener { _, event -> handleOverlayTouch(event) }
+            winMove.setOnTouchListener { _, event -> handleOverlayTouch(event) }
             menu?.setOnTouchListener { _, event -> handleOverlayTouch(event) }
 
             // Style menu buttons
-            styleCircleButton(menu!!, 0xFF000000, 20, 0xFF000000)
-            styleCircleButton3(cheatMenu!!, 0xC13A3A3A, 20, 0xFF00FFFF)
-            styleCircleButton(menu1!!, 0xC13A3A3A, 20, 0xFF00FFFF)
+            styleCircleButton(menu!!, 0xFF000000.toInt(), 20, 0xFF000000.toInt())
+            styleCircleButton3(cheatMenu!!, 0xC13A3A3A.toInt(), 20, 0xFF00FFFF.toInt())
+            styleCircleButton(menu1!!, 0xC13A3A3A.toInt(), 20, 0xFF00FFFF.toInt())
 
             // Checkbox drawable tint
-            report?.buttonDrawable?.setColorFilter(
-                PorterDuffColorFilter(0xFFFFC600, PorterDuff.Mode.SRC_ATOP)
+            pg?.findViewById<CheckBox>(R.id.report)?.buttonDrawable?.setColorFilter(
+                PorterDuffColorFilter(0xFFFFC600.toInt(), PorterDuff.Mode.SRC_ATOP)
             )
 
-            // Initialize checkboxes from config
-            initializeCheckboxes()
-            initializeSeekBars()
+            // Initialize checkboxes from config (pages attach asynchronously,
+            // so wire them once the ViewPager has laid out)
+            pg?.post {
+                initializeCheckboxes()
+                initializeSeekBars()
+            }
             initializeRadioButtons()
         }
     }
 
     private fun handleOverlayTouch(event: MotionEvent): Boolean {
-        when (event.action) {
+        return when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 initialWindowX = overlayParams?.x?.toFloat() ?: 0f
                 initialWindowY = overlayParams?.y?.toFloat() ?: 0f
@@ -410,7 +417,7 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
         menus.forEachIndexed { index, menu ->
             menu?.let {
                 val isSelected = index == currentPage
-                styleCircleButton2(it, 0x00000000, 20, if (isSelected) 0xFF00FFFF else 0xFF00FFFF)
+                styleCircleButton2(it, 0x00000000, 20, if (isSelected) 0xFF00FFFF.toInt() else 0xFF00FFFF.toInt())
             }
         }
     }
@@ -436,9 +443,9 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
             val maxRadius = min(w, h) / 2f
             val radius = maxRadius * 0.85f
 
-            val GREEN = 0xFF00FF00
-            val RED = 0xFFFF0000
-            val WHITE = 0xFFFFFFFF
+            val GREEN = 0xFF00FF00.toInt()
+            val RED = 0xFFFF0000.toInt()
+            val WHITE = 0xFFFFFFFF.toInt()
 
             // Outer glow
             paint.style = android.graphics.Paint.Style.STROKE
@@ -450,7 +457,7 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
 
             // Inner circle
             paint.strokeWidth = max(1f, maxRadius * 0.02f)
-            paint.color = 0xFF193D29
+            paint.color = 0xFF193D29.toInt()
             canvas.drawCircle(cx, cy, radius * 0.9f, paint)
 
             // Hour marks
@@ -465,24 +472,24 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
                     paint.strokeWidth = max(1f, maxRadius * 0.015f)
                     radius * 0.80
                 }
-                val x1 = cx + Math.sin(angle) * inner
-                val y1 = cy - Math.cos(angle) * inner
-                val x2 = cx + Math.sin(angle) * outer
-                val y2 = cy - Math.cos(angle) * outer
+                val x1 = (cx + Math.sin(angle) * inner).toFloat()
+                val y1 = (cy - Math.cos(angle) * inner).toFloat()
+                val x2 = (cx + Math.sin(angle) * outer).toFloat()
+                val y2 = (cy - Math.cos(angle) * outer).toFloat()
                 canvas.drawLine(x1, y1, x2, y2, paint)
             }
 
             // Numbers
             paint.style = android.graphics.Paint.Style.FILL
             paint.color = WHITE
-            paint.textSize = radius * 0.35
+            paint.textSize = radius * 0.35f
             paint.typeface = Typeface.DEFAULT_BOLD
             paint.textAlign = android.graphics.Paint.Align.CENTER
             val nums = mapOf(12 to "12", 3 to "3", 6 to "6", 9 to "9")
             for ((n, text) in nums) {
                 val angle = Math.toRadians(n * 30.0)
-                val x = cx + Math.sin(angle) * (radius * 0.45)
-                val y = cy - Math.cos(angle) * (radius * 0.45)
+                val x = (cx + Math.sin(angle) * (radius * 0.45)).toFloat()
+                val y = (cy - Math.cos(angle) * (radius * 0.45)).toFloat()
                 canvas.drawText(text, x, y + paint.textSize / 3, paint)
             }
 
@@ -494,28 +501,28 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
 
             val hourAngle = Math.toRadians((hour * 30) + (minute * 0.5))
             val minuteAngle = Math.toRadians((minute * 6) + (second * 0.1))
-            val secondAngle = Math.toRadians(second * 6)
+            val secondAngle = Math.toRadians(second * 6.0)
 
             // Hour hand
             paint.color = WHITE
             paint.strokeWidth = max(3f, maxRadius * 0.08f)
             paint.strokeCap = android.graphics.Paint.Cap.ROUND
-            var hx = cx + Math.sin(hourAngle) * (radius * 0.48)
-            var hy = cy - Math.cos(hourAngle) * (radius * 0.48)
+            var hx = (cx + Math.sin(hourAngle) * (radius * 0.48)).toFloat()
+            var hy = (cy - Math.cos(hourAngle) * (radius * 0.48)).toFloat()
             canvas.drawLine(cx, cy, hx, hy, paint)
 
             // Minute hand
             paint.color = GREEN
             paint.strokeWidth = max(2f, maxRadius * 0.05f)
-            var mx = cx + Math.sin(minuteAngle) * (radius * 0.68)
-            var my = cy - Math.cos(minuteAngle) * (radius * 0.68)
+            var mx = (cx + Math.sin(minuteAngle) * (radius * 0.68)).toFloat()
+            var my = (cy - Math.cos(minuteAngle) * (radius * 0.68)).toFloat()
             canvas.drawLine(cx, cy, mx, my, paint)
 
             // Second hand
             paint.color = RED
             paint.strokeWidth = max(1f, maxRadius * 0.02f)
-            var sx = cx + Math.sin(secondAngle) * (radius * 0.78)
-            var sy = cy - Math.cos(secondAngle) * (radius * 0.78)
+            var sx = (cx + Math.sin(secondAngle) * (radius * 0.78)).toFloat()
+            var sy = (cy - Math.cos(secondAngle) * (radius * 0.78)).toFloat()
             canvas.drawLine(cx, cy, sx, sy, paint)
 
             // Center dots
@@ -541,11 +548,11 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
             while (ecgRunning) {
                 Thread.sleep(12)
                 handler.post {
-                    val ecgView = overlayBinding?.ecg_view
+                    val ecgView: View? = pg?.findViewById(R.id.ecg_view)
                     ecgView?.let { view ->
                         val w = view.width
                         val h = view.height
-                        if (h <= 0) return@post
+                        if (h <= 0) return@let
 
                         val centerY = h / 2f
                         step++
@@ -564,24 +571,24 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
                         points.add(nextY)
                         if (points.size > maxPoints) points.removeAt(0)
 
-                        drawECG(view, points, w, h, centerY)
+                        drawECG(view, points, w, h, centerY, maxPoints)
                     }
                 }
             }
         }.apply { start() }
     }
 
-    private fun drawECG(view: View, points: List<Float>, w: Int, h: Int, centerY: Float) {
+    private fun drawECG(view: View, points: List<Float>, w: Int, h: Int, centerY: Float, maxPoints: Int) {
         val bitmap = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
         val paint = android.graphics.Paint().apply {
             isAntiAlias = true
             style = android.graphics.Paint.Style.STROKE
             strokeWidth = 6f
-            color = 0xFF00FF00
+            color = 0xFF00FF00.toInt()
             strokeCap = android.graphics.Paint.Cap.ROUND
             strokeJoin = android.graphics.Paint.Join.ROUND
-            setShadowLayer(25f, 0f, 0f, 0xFF00FF00)
+            setShadowLayer(25f, 0f, 0f, 0xFF00FF00.toInt())
         }
 
         // Grid
@@ -611,9 +618,9 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
 
                 if (i == points.size - 1) {
                     val scanPaint = android.graphics.Paint().apply {
-                        color = 0xAA00FF00
+                        color = 0xAA00FF00.toInt()
                         strokeWidth = 4f
-                        setShadowLayer(30f, 0f, 0f, 0xFF00FF00)
+                        setShadowLayer(30f, 0f, 0f, 0xFF00FF00.toInt())
                     }
                     canvas.drawLine(x2, 0f, x2, h.toFloat(), scanPaint)
                 }
@@ -624,16 +631,18 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
     }
 
     private fun initializeCheckboxes() {
+        // These views live in the ViewPager pages, not the overlay root layout.
+        val pager = pg ?: return
         val checkboxes = listOf(
-            overlayBinding?.report, overlayBinding?.tut, overlayBinding?.clogs,
-            overlayBinding?.floatmenu4, overlayBinding?.memory, overlayBinding?.quality,
-            overlayBinding?.wall, overlayBinding?.redhack, overlayBinding?.wo, overlayBinding?.wo2,
-            overlayBinding?.amo, overlayBinding?.fire, overlayBinding?.norecoil, overlayBinding?.nos,
-            overlayBinding?.noreload, overlayBinding?.fscope, overlayBinding?.fastsw,
-            overlayBinding?.speed, overlayBinding?.advance, overlayBinding?.crouch, overlayBinding?.walk,
-            overlayBinding?.paldo, overlayBinding?.noshakegun, overlayBinding?.nop, overlayBinding?.spect,
-            overlayBinding?.br, overlayBinding?.un
-        )
+            R.id.report, R.id.tut, R.id.clogs,
+            R.id.floatmenu4, R.id.memory, R.id.quality,
+            R.id.wall, R.id.redhack, R.id.wo, R.id.wo2,
+            R.id.amo, R.id.fire, R.id.norecoil, R.id.nos,
+            R.id.noreload, R.id.fscope, R.id.fastsw,
+            R.id.speed, R.id.advance, R.id.crouch, R.id.walk,
+            R.id.paldo, R.id.noshakegun, R.id.nop, R.id.spect,
+            R.id.br, R.id.un
+        ).map { pager.findViewById<CheckBox>(it) }
 
         checkboxes.forEach { cb ->
             cb?.setOnCheckedChangeListener { _, checked ->
@@ -679,22 +688,24 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
     }
 
     private fun initializeSeekBars() {
+        // These views live in the ViewPager pages, not the overlay root layout.
+        val pager = pg ?: return
         val seekBars = mapOf(
-            overlayBinding?.aimbot_seekbar to "aimbot_seekbar",
-            overlayBinding?.snowboard_seekbar to "snowboard_seekbar",
-            overlayBinding?.diveb_seekbar to "diveb_seekbar",
-            overlayBinding?.br_seekbar to "br_seekbar",
-            overlayBinding?.mp_seekbar to "mp_seekbar"
+            pager.findViewById<SeekBar>(R.id.aimbot_seekbar) to "aimbot_seekbar",
+            pager.findViewById<SeekBar>(R.id.snowboard_seekbar) to "snowboard_seekbar",
+            pager.findViewById<SeekBar>(R.id.diveb_seekbar) to "diveb_seekbar",
+            pager.findViewById<SeekBar>(R.id.br_seekbar) to "br_seekbar",
+            pager.findViewById<SeekBar>(R.id.mp_seekbar) to "mp_seekbar"
         )
 
         seekBars.forEach { (sb, name) ->
             sb?.apply {
-                val textView = when (name) {
-                    "aimbot_seekbar" -> overlayBinding?.aimbot_text
-                    "snowboard_seekbar" -> overlayBinding?.snowboard_text
-                    "diveb_seekbar" -> overlayBinding?.diveb_text
-                    "br_seekbar" -> overlayBinding?.br_text
-                    "mp_seekbar" -> overlayBinding?.mp_text
+                val textView: TextView? = when (name) {
+                    "aimbot_seekbar" -> pager.findViewById(R.id.aimbot_text)
+                    "snowboard_seekbar" -> pager.findViewById(R.id.snowboard_text)
+                    "diveb_seekbar" -> pager.findViewById(R.id.diveb_text)
+                    "br_seekbar" -> pager.findViewById(R.id.br_text)
+                    "mp_seekbar" -> pager.findViewById(R.id.mp_text)
                     else -> null
                 }
 
@@ -706,7 +717,7 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
                     override fun onStartTrackingTouch(seekBar: SeekBar?) {}
 
                     override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                        controller.onSeekBarStopTracking(name, progress)
+                        controller.onSeekBarStopTracking(name, seekBar?.progress ?: 0)
                     }
                 })
             }
@@ -738,7 +749,7 @@ class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListene
         val toast = Toast(applicationContext)
         toast.duration = Toast.LENGTH_SHORT
         toast.view = layout
-        toast.gravity = Gravity.BOTTOM, 0, 120
+        toast.setGravity(Gravity.BOTTOM, 0, 120)
         toast.show()
     }
 

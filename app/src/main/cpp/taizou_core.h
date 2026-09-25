@@ -88,6 +88,12 @@ private:
     bool root_available_ = false;
 };
 
+// NOTE: namespace must be closed here. Leaving it open wraps every header
+// included after this one (e.g. <fstream> in taizou_core.cpp) inside
+// namespace taizou, which breaks libc++ lookup and fails the NDK build
+// with errors like "unknown class name 'false_type'" in <system_error>.
+} // namespace taizou
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_taizou_paid_TaizouNative_initialize(JNIEnv* env, jobject thiz, jobject context);
 
