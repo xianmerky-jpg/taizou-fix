@@ -63,6 +63,8 @@ class PageFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        return inflater.inflate(layoutRes, container, false)
+        val view = inflater.inflate(layoutRes, container, false)
+        (activity as? MainActivity)?.onPageInflated(view)
+        return view
     }
 }

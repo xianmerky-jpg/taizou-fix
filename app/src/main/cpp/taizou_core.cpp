@@ -355,7 +355,13 @@ uintptr_t TaizouCore::getLibraryBaseAddress(int pid, const std::string& lib_name
             size_t dash_pos = line.find('-');
             if (dash_pos != std::string::npos) {
                 std::string addr_str = line.substr(0, dash_pos);
-                return std::stoull(addr_str, nullptr, 16);
+                try {
+                    return std::stoull(addr_str, nullptr, 16);
+                } catch (...) {
+                    // A malformed /proc maps line must not abort the injector
+                    // (uncaught C++ exceptions terminate the process).
+                    continue;
+                }
             }
         }
     }

@@ -672,9 +672,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         view.setBackground(android.graphics.drawable.BitmapDrawable(resources, bitmap))
     }
 
-    private fun initializeCheckboxes() {
+    private fun initializeCheckboxes(root: View? = pg) {
         // These views live in the ViewPager pages, not the overlay root layout.
-        val pager = pg ?: return
+        val pager = root ?: return
         val checkboxes = listOf(
             R.id.report, R.id.tut, R.id.clogs,
             R.id.floatmenu4, R.id.memory, R.id.quality,
@@ -694,6 +694,13 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 }
             }
         }
+    }
+
+    /** Called by [PageFragment] whenever an overlay page view is inflated,
+        so its checkboxes/seekbars are always wired (no timing luck). */
+    fun onPageInflated(page: View) {
+        initializeCheckboxes(page)
+        initializeSeekBars(page)
     }
 
     private fun getCheckboxName(cb: CheckBox): String? {
@@ -729,9 +736,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         }
     }
 
-    private fun initializeSeekBars() {
+    private fun initializeSeekBars(root: View? = pg) {
         // These views live in the ViewPager pages, not the overlay root layout.
-        val pager = pg ?: return
+        val pager = root ?: return
         val seekBars = mapOf(
             pager.findViewById<SeekBar>(R.id.aimbot_seekbar) to "aimbot_seekbar",
             pager.findViewById<SeekBar>(R.id.snowboard_seekbar) to "snowboard_seekbar",
