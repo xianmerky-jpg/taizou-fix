@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 object TaizouNative {
     private const val TAG = "TaizouNative"
     private var initialized = false
+    @Volatile
     private var rootAvailable = false
 
     @Suppress("UNUSED_PARAMETER")
@@ -165,11 +166,12 @@ class TaizouController(
     }
 
     fun onStartClick() {
-        if (!TaizouNative.isRootAvailable()) {
-            TaizouNative.checkRoot()
-        }
+        // The su probe can block on a root-manager prompt; never run it on
+        // the UI thread (would look like a freeze/crash on START).
+        Thread { TaizouNative.checkRoot() }.start()
         if (!((context as? TaizouApplication)?.hasOverlayPermission() ?: false)) {
             (context as? TaizouApplication)?.requestOverlayPermission()
+            tts.speak("Please allow display over other apps, then press back")
             return
         }
         overlayShown = true

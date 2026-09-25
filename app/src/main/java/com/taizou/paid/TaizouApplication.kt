@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.OnLifecycleEvent
@@ -14,6 +15,21 @@ class TaizouApplication : Application(), LifecycleObserver {
 
     override fun onCreate() {
         super.onCreate()
+        // Persist uncaught crashes so the next launch can show what happened
+        // instead of silently closing. Chained to the previous handler.
+        val prevHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            try {
+                openFileOutput("crash.log", Context.MODE_PRIVATE).use {
+                    it.write(Log.getStackTraceString(e).toByteArray())
+                }
+            } catch (ignored: Exception) {
+                Log.e("TaizouApp", "Failed to write crash log", ignored)
+            }
+            if (prevHandler != null) {
+                prevHandler.uncaughtException(thread, e)
+            }
+        }
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         TaizouNative.initialize(this)
     }

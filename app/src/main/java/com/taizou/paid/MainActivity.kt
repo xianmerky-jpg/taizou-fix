@@ -122,6 +122,23 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         // Hide action bar
         supportActionBar?.hide()
 
+        // Surface the previous run's crash (if any) so it can be reported
+        // instead of looking like a silent auto-close.
+        try {
+            val crashFile = File(filesDir, "crash.log")
+            if (crashFile.exists()) {
+                val trace = crashFile.readText().take(1500)
+                crashFile.delete()
+                AlertDialog.Builder(this)
+                    .setTitle("Previous run crashed")
+                    .setMessage(trace)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        } catch (ignored: Exception) {
+            Log.e("MainActivity", "Failed to read crash log", ignored)
+        }
+
         // Status bar color
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
