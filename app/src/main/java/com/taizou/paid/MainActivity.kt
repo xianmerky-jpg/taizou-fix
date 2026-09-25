@@ -377,8 +377,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             styleCircleButton3(cheatMenu!!, 0xC13A3A3A.toInt(), 20, 0xFF00FFFF.toInt())
             styleCircleButton(menu1!!, 0xC13A3A3A.toInt(), 20, 0xFF00FFFF.toInt())
 
-            // Checkbox drawable tint
-            pg?.findViewById<CheckBox>(R.id.report)?.buttonDrawable?.setColorFilter(
+            // Checkbox drawable tint (report is a CheckBox, i.e. CompoundButton)
+            (pg?.findViewById<View>(R.id.report) as? CompoundButton)?.buttonDrawable?.setColorFilter(
                 PorterDuffColorFilter(0xFFFFC600.toInt(), PorterDuff.Mode.SRC_ATOP)
             )
 
@@ -683,6 +683,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
 
     private fun initializeCheckboxes(root: View? = pg) {
         // These views live in the ViewPager pages, not the overlay root layout.
+        // Looked up as View + safe-cast: ids are mostly CheckBox but 'un' is a
+        // SwitchCompat, so a hard CheckBox cast crashes (both are CompoundButton).
         val pager = root ?: return
         val checkboxes = listOf(
             R.id.report, R.id.tut, R.id.clogs,
@@ -693,7 +695,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             R.id.speed, R.id.advance, R.id.crouch, R.id.walk,
             R.id.paldo, R.id.noshakegun, R.id.nop, R.id.spect,
             R.id.br, R.id.un
-        ).map { pager.findViewById<CheckBox>(it) }
+        ).map { pager.findViewById<View>(it) as? CompoundButton }
 
         checkboxes.forEach { cb ->
             cb?.setOnCheckedChangeListener { _, checked ->
@@ -712,7 +714,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         initializeSeekBars(page)
     }
 
-    private fun getCheckboxName(cb: CheckBox): String? {
+    private fun getCheckboxName(cb: CompoundButton): String? {
         return when (cb.id) {
             R.id.report -> "report"
             R.id.tut -> "tut"
@@ -749,21 +751,21 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         // These views live in the ViewPager pages, not the overlay root layout.
         val pager = root ?: return
         val seekBars = mapOf(
-            pager.findViewById<SeekBar>(R.id.aimbot_seekbar) to "aimbot_seekbar",
-            pager.findViewById<SeekBar>(R.id.snowboard_seekbar) to "snowboard_seekbar",
-            pager.findViewById<SeekBar>(R.id.diveb_seekbar) to "diveb_seekbar",
-            pager.findViewById<SeekBar>(R.id.br_seekbar) to "br_seekbar",
-            pager.findViewById<SeekBar>(R.id.mp_seekbar) to "mp_seekbar"
+            (pager.findViewById<View>(R.id.aimbot_seekbar) as? SeekBar) to "aimbot_seekbar",
+            (pager.findViewById<View>(R.id.snowboard_seekbar) as? SeekBar) to "snowboard_seekbar",
+            (pager.findViewById<View>(R.id.diveb_seekbar) as? SeekBar) to "diveb_seekbar",
+            (pager.findViewById<View>(R.id.br_seekbar) as? SeekBar) to "br_seekbar",
+            (pager.findViewById<View>(R.id.mp_seekbar) as? SeekBar) to "mp_seekbar"
         )
 
         seekBars.forEach { (sb, name) ->
             sb?.apply {
                 val textView: TextView? = when (name) {
-                    "aimbot_seekbar" -> pager.findViewById(R.id.aimbot_text)
-                    "snowboard_seekbar" -> pager.findViewById(R.id.snowboard_text)
-                    "diveb_seekbar" -> pager.findViewById(R.id.diveb_text)
-                    "br_seekbar" -> pager.findViewById(R.id.br_text)
-                    "mp_seekbar" -> pager.findViewById(R.id.mp_text)
+                    "aimbot_seekbar" -> pager.findViewById<View>(R.id.aimbot_text) as? TextView
+                    "snowboard_seekbar" -> pager.findViewById<View>(R.id.snowboard_text) as? TextView
+                    "diveb_seekbar" -> pager.findViewById<View>(R.id.diveb_text) as? TextView
+                    "br_seekbar" -> pager.findViewById<View>(R.id.br_text) as? TextView
+                    "mp_seekbar" -> pager.findViewById<View>(R.id.mp_text) as? TextView
                     else -> null
                 }
 
