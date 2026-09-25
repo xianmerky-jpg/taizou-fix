@@ -424,16 +424,21 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         if (overlayView != null && overlayParams != null && !overlayShown) {
             if (Settings.canDrawOverlays(this)) {
                 try {
-                    overlayWindowManager?.addView(overlayView, overlayParams)
+                    if (overlayView?.parent == null) {
+                        overlayWindowManager?.addView(overlayView, overlayParams)
+                    }
                 } catch (e: Exception) {
                     Log.e("Overlay", "Failed to add overlay view", e)
-                    showCustomToast("Overlay blocked by system")
+                    Toast.makeText(this, "Overlay failed: ${e.message}", Toast.LENGTH_LONG).show()
                     return
                 }
                 overlayShown = true
                 Toast.makeText(this, "Floating menu shown", Toast.LENGTH_SHORT).show()
                 overlayBinding?.floatingEyeIcon?.visibility = View.GONE
                 overlayBinding?.menu?.visibility = View.VISIBLE
+                // Features must be visible immediately on START, not hidden
+                // behind the collapsed cheat menu.
+                if (!cheatMenuExpanded) toggleCheatMenu()
                 showCustomToast("IMGUI Restored")
                 speakText("IMGUI Restored")
             } else {
