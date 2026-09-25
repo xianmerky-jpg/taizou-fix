@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal">
+
+    <!-- Floating Eye Icon -->
+    <ImageView
+        android:id="@+id/floatingEyeIcon"
+        android:layout_width="45dp"
+        android:layout_height="45dp"
+        android:padding="5dp"
+        android:src="@drawable/eye1"
+        android:visibility="gone" />
+
+    <!-- Main Menu Card -->
+    <FrameLayout
+        android:id="@+id/menu"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        android:elevation="60dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- HEADER CONTAINER -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/win_mainview1"
+                    android:layout_width="375dp"
+                    android:layout_height="40dp"
+                    android:background="#FF000000"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingLeft="5dp"
+                    android:paddingRight="5dp">
+
+                    <ImageView
+                        android:id="@+id/img1"
+                        android:layout_width="35dp"
+                        android:layout_height="match_parent"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_to_top"
+                        android:tint="#FFD00000" />
+
+                    <TextView
+                        android:id="@+id/win_move"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="5dp"
+                        android:layout_marginRight="10dp"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="TAIZOU PAID INJECTOR GR 1.6.57"
+                        android:textColor="#FFDD0000"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <ImageView
+                        android:id="@+id/hideBtn"
+                        android:layout_width="185dp"
+                        android:layout_height="match_parent"
+                        android:padding="8dp"
+                        android:src="@drawable/eye"
+                        android:tint="#FFFF0000" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="2dp"
+                    android:background="#FFFF0000" />
+            </LinearLayout>
+
+            <!-- CHEAT MENU -->
+            <LinearLayout
+                android:id="@+id/cheatMenu"
+                android:layout_width="match_parent"
+                android:layout_height="330dp"
+                android:layout_gravity="center"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <!-- SIDE MENU -->
+                <LinearLayout
+                    android:layout_width="80dp"
+                    android:layout_height="match_parent"
+                    android:background="@android:color/transparent"
+                    android:orientation="vertical"
+                    android:padding="5dp">
+
+                    <ImageView
+                        android:id="@+id/clock"
+                        android:layout_width="74dp"
+                        android:layout_height="74dp"
+                        android:layout_gravity="center" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="5dp"
+                        android:orientation="vertical" />
+
+                    <ImageView
+                        android:id="@+id/menu1"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginBottom="2dp"
+                        android:background="#FFFF0000"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_main" />
+
+                    <ImageView
+                        android:id="@+id/menu2"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginBottom="2dp"
+                        android:background="@android:color/transparent"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_memory" />
+
+                    <ImageView
+                        android:id="@+id/menu3"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginBottom="2dp"
+                        android:background="@android:color/transparent"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_now" />
+
+                    <ImageView
+                        android:id="@+id/menu4"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginBottom="2dp"
+                        android:background="@android:color/transparent"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_skins" />
+
+                    <ImageView
+                        android:id="@+id/menu6"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginBottom="2dp"
+                        android:background="@android:color/transparent"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_settings" />
+                </LinearLayout>
+
+                <!-- CONTENT AREA -->
+                <LinearLayout
+                    android:id="@+id/menuu"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@android:color/transparent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="1dp">
+
+                    <androidx.viewpager.widget.ViewPager
+                        android:id="@+id/pg"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@android:color/transparent" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

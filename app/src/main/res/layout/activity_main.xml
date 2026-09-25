@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/bg"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF05080D">
+
+    <!-- VIDEO BACKGROUND -->
+    <VideoView
+        android:id="@+id/video"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:padding="10dp" />
+
+    <!-- PREMIUM OVERLAY -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#9905080D">
+
+        <!-- PREMIUM HEADER -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingTop="14dp"
+            android:paddingBottom="10dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="HAROLD INJECTOR VIP"
+                android:textColor="#FF8D00FF"
+                android:textSize="25sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="center"
+                android:text="PAID  •  1.6.57"
+                android:textColor="#FFFFD76A"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="150dp"
+                android:layout_height="2dp"
+                android:layout_marginTop="8dp"
+                android:background="#FF42DFFF" />
+        </LinearLayout>
+
+        <!-- LIVE CLOCK -->
+        <FrameLayout
+            android:background="@drawable/bg_card_dark"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="18dp"
+            android:layout_marginEnd="18dp"
+            android:elevation="10dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:paddingLeft="15dp"
+                android:paddingTop="8dp"
+                android:paddingRight="15dp"
+                android:paddingBottom="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="LOCAL TIME"
+                    android:textColor="#FF8F8F9C"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextClock
+                    android:id="@+id/vip_clock"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="19sp"
+                    android:textStyle="bold"
+                    android:format12Hour="hh:mm:ss a"
+                    android:format24Hour="HH:mm:ss" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="LIVE • SEC"
+                    android:textColor="#FFFFD978"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- START / STOP / LAUNCH BUTTONS -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginTop="20dp"
+            android:orientation="horizontal">
+
+            <!-- START BUTTON -->
+            <FrameLayout
+            android:background="@drawable/bg_card_semi"
+                android:id="@+id/card_start"
+                android:layout_width="135dp"
+                android:layout_height="50dp"
+                android:layout_margin="7dp"
+                android:elevation="12dp">
+
+                <ToggleButton
+                    android:id="@+id/start"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#64000000"
+                    android:text="▶  START"
+                    android:textOn="▶  START"
+                    android:textOff="▶  START"
+                    android:textColor="#FFFFFFFF"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <!-- STOP BUTTON -->
+            <FrameLayout
+            android:background="@drawable/bg_card_semi"
+                android:id="@+id/card_stop"
+                android:layout_width="135dp"
+                android:layout_height="50dp"
+                android:layout_margin="7dp"
+                android:elevation="12dp">
+
+                <Button
+                    android:id="@+id/stop"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#00000000"
+                    android:text="■  STOP"
+                    android:textColor="#FFFFFFFF"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <!-- LAUNCH BUTTON -->
+            <FrameLayout
+            android:background="@drawable/bg_card_semi"
+                android:id="@+id/card_launch"
+                android:layout_width="135dp"
+                android:layout_height="50dp"
+                android:layout_margin="7dp"
+                android:elevation="12dp">
+
+                <Button
+                    android:id="@+id/game"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#00000000"
+                    android:text="LAUNCH"
+                    android:textColor="#FFFFFFFF"
+                    android:textStyle="bold" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <!-- BOTTOM BUTTONS -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="22dp"
+            android:orientation="horizontal">
+
+            <!-- OWNER -->
+            <FrameLayout
+            android:background="@drawable/bg_card_dark"
+                android:layout_width="105dp"
+                android:layout_height="43dp"
+                android:layout_margin="5dp"
+                android:elevation="10dp">
+
+                <Button
+                    android:id="@+id/tg1"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#00000000"
+                    android:text="OWNER"
+                    android:textColor="#FF8DEBFF"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <!-- PRICE LIST -->
+            <FrameLayout
+            android:background="@drawable/bg_card_dark"
+                android:layout_width="105dp"
+                android:layout_height="43dp"
+                android:layout_margin="5dp"
+                android:elevation="10dp">
+
+                <Button
+                    android:id="@+id/tg2"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#00000000"
+                    android:text="PRICE LIST"
+                    android:textColor="#FFFFD76A"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <!-- TG CHANNEL -->
+            <FrameLayout
+            android:background="@drawable/bg_card_dark"
+                android:layout_width="105dp"
+                android:layout_height="43dp"
+                android:layout_margin="5dp"
+                android:elevation="10dp">
+
+                <Button
+                    android:id="@+id/tg3"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#00000000"
+                    android:text="TG CHANNEL"
+                    android:textColor="#FF8DEBFF"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <!-- FOOTER -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="5dp"
+            android:text="HAROLD •  PAID  •  GR"
+            android:textColor="#FF425563"
+            android:textSize="8sp" />
+    </FrameLayout>
+</FrameLayout>

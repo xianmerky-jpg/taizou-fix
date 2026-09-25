@@ -1,0 +1,453 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="5dp">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center_horizontal">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/_drawer_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="0dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="10dp"
+                        android:orientation="horizontal" />
+
+                    <!-- LEGENDARY SKINS -->
+                    <RadioGroup
+                        android:id="@+id/legendary_group"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="MYTHIC SKIN"
+                            android:textColor="#FFFF0000"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/kuji"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="KUIJI EXTERNAL OATHBEARER"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/shepherd"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="DARKSHEPHERD"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/sophia"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="SOPHIA"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/spectre"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="SPECTRE"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/templar"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="TEMPLAR"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/siren"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="SIREN SIREN SONG"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/ghost"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="GHOST"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/lazarus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="LAZARUS"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+                    </RadioGroup>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="THE BOYS"
+                        android:textColor="#FFFF0000"
+                        android:textSize="15sp" />
+
+                    <RadioGroup
+                        android:id="@+id/boys_group"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <RadioButton
+                            android:id="@+id/noir"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="BLACK NOIR"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/starlight"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="STARLIGHT"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/homelander"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="HOMELANDER"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+                    </RadioGroup>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="STREET FIGHTER SKIN"
+                        android:textColor="#FFFF0000"
+                        android:textSize="15sp" />
+
+                    <RadioGroup
+                        android:id="@+id/sf_group"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <RadioButton
+                            android:id="@+id/chunli"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="CHUNLI STREET FIGHTER"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/ryu"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="RYU STREET FIGHTER"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/cammy"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="CAMMY STREET FIGHTER"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/akuma"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="AKUMA STREET FIGHTER"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+                    </RadioGroup>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="EPIC SKIN"
+                        android:textColor="#FFFF0000"
+                        android:textSize="15sp" />
+
+                    <RadioGroup
+                        android:id="@+id/epic_group"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <RadioButton
+                            android:id="@+id/warden"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="ZOMBIE WARDEN"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/pader"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="HIGH PRIEST OF CHAOS"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/vivian"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="BLACK VIVIAN"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/yorsha"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="YIN YORSHA"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/Rambo"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="RAMBO"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/Ferg"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="FERG"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/Roze"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="ROZE ROK"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/Kestrel"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="KESTREL"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+                    </RadioGroup>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="MELEE SKIN"
+                        android:textColor="#FFFF0000"
+                        android:textSize="15sp" />
+
+                    <RadioGroup
+                        android:id="@+id/melee_group"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <RadioButton
+                            android:id="@+id/nosmokee"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="TANG NO SMOKE"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/tang"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="TANG"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/longq"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="LONGQUAN"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/spear"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="SPEAR"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/scissors"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="SCISSORS"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/tomahawk"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="TOMAHAWK"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/saber"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="SABER"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/fiery"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="KATANA"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/dark"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="DARK SWORD"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+                    </RadioGroup>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="VEHICLE &amp; EQUIPMENT"
+                        android:textColor="#FFFF0000"
+                        android:textSize="15sp" />
+
+                    <RadioGroup
+                        android:id="@+id/equip_group"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <RadioButton
+                            android:id="@+id/sand"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="SNOB [SANDSTORM]"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/jetpack"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="JETPACK SOARING BLAZE"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/farflight"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="PARACHUTE FARFLIGHT"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+
+                        <RadioButton
+                            android:id="@+id/mechair"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="SWINGSUIT MECH AIR"
+                            android:textColor="#FFFFFFFF"
+                            android:textSize="15sp" />
+                    </RadioGroup>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

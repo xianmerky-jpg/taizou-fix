@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">TAIZOU PAID INJECTOR</string>
+    <string name="app_version">1.6.57</string>
+    <string name="welcome_message">Welcome to Taizou CODM GR</string>
+    <string name="start_button">▶  START</string>
+    <string name="stop_button">■  STOP</string>
+    <string name="launch_button">LAUNCH</string>
+    <string name="owner_button">OWNER</string>
+    <string name="price_button">PRICE LIST</string>
+    <string name="channel_button">TG CHANNEL</string>
+    <string name="save_config">SAVE CONFIG</string>
+    <string name="load_config">LOAD CONFIG</string>
+    <string name="exit_app">EXIT APP</string>
+    <string name="bypass_running">BYPASS RUNNING</string>
+</resources>

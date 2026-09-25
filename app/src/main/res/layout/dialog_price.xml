@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="30dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="20dp"
+        android:background="@drawable/dialog_bg">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="BUY ACCESS KEY"
+            android:textColor="#FFFFD700"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="Select your subscription plan"
+            android:textColor="#FFAAAAAA"
+            android:textSize="11sp"
+            android:gravity="center" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:layout_marginTop="8dp"
+            android:background="#FF42DFFF" />
+
+        <LinearLayout
+            android:id="@+id/priceBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="15dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="15dp"
+            android:background="@drawable/price_box_bg">
+
+            <TextView
+                android:id="@+id/selectedPlan"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="WALA PANG NAPILI"
+                android:textColor="#FFFFFFFF"
+                android:textSize="11sp"
+                android:gravity="center" />
+
+            <TextView
+                android:id="@+id/priceText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="₱0"
+                android:textColor="#FF00E5FF"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:gravity="center" />
+        </LinearLayout>
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="15dp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:scrollbars="none"
+            android:id="@+id/scrollPlans">
+
+            <LinearLayout
+                android:id="@+id/plansContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
+
+        <Button
+            android:id="@+id/buyButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="15dp"
+            android:text=" CLICK HERE TO BUY "
+            android:textColor="#FF000000"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:background="@drawable/buy_button_bg" />
+    </LinearLayout>
+</LinearLayout>
