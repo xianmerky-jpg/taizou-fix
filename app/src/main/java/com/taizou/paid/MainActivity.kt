@@ -75,6 +75,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private var overlayParams: WindowManager.LayoutParams? = null
     private var overlayShown = false
     private var cheatMenuExpanded = false
+    // Set when START is toggled on; used to retry showing the overlay when
+    // returning from the system overlay-permission screen.
+    private var startRequested = false
 
     // Touch handling for overlay
     private var initialTouchX = 0f
@@ -149,6 +152,15 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         performAntiDebugChecks()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // If START was tapped while overlay permission was missing, the system
+        // permission screen was opened instead. Retry now if granted.
+        if (startRequested && !overlayShown && overlayView != null && Settings.canDrawOverlays(this)) {
+            showOverlay()
+        }
+    }
+
     private fun initTTS() {
         tts = TextToSpeech(this, object : TextToSpeech.OnInitListener {
             override fun onInit(status: Int) {
@@ -189,9 +201,11 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
 
         binding.start.setOnCheckedChangeListener { _, checked ->
             if (checked) {
+                startRequested = true
                 waterDropAnimation(binding.game, 150)
                 controller.onStartClick()
             } else {
+                startRequested = false
                 controller.onStopClick()
             }
         }
@@ -385,7 +399,13 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private fun showOverlay() {
         if (overlayView != null && overlayParams != null && !overlayShown) {
             if (Settings.canDrawOverlays(this)) {
-                overlayWindowManager?.addView(overlayView, overlayParams)
+                try {
+                    overlayWindowManager?.addView(overlayView, overlayParams)
+                } catch (e: Exception) {
+                    Log.e("Overlay", "Failed to add overlay view", e)
+                    showCustomToast("Overlay blocked by system")
+                    return
+                }
                 overlayShown = true
                 overlayBinding?.floatingEyeIcon?.visibility = View.GONE
                 overlayBinding?.menu?.visibility = View.VISIBLE
