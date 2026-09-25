@@ -663,3 +663,12 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_taizou_paid_TaizouNative_speakText(JNIEnv* env, jobject thiz, jstring text) {
     // Handled in Kotlin
 }
+
+// Creates the core singleton when the library is loaded
+// (System.loadLibrary). Without this, g_instance stays null: every guarded
+// native call silently no-ops and the unguarded ones would dereference null.
+extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
+    static taizou::TaizouCore core;
+    (void)vm;
+    return JNI_VERSION_1_6;
+}

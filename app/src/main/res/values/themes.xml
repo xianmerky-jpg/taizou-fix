@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Minimal theme - only android: attributes so AAPT never fails on missing library attrs -->
-    <style name="Theme.TaizouInjector" parent="android:Theme.DeviceDefault.NoActionBar">
-        <item name="android:colorPrimary">#8D00FF</item>
-        <item name="android:colorPrimaryDark">#6B00CC</item>
-        <item name="android:colorAccent">#00FFEE</item>
+    <!-- Must be an AppCompat (or descendant) theme: MainActivity extends
+         AppCompatActivity, which crashes on launch with a platform theme
+         ("You need to use a Theme.AppCompat theme"). -->
+    <style name="Theme.TaizouInjector" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">#8D00FF</item>
+        <item name="colorPrimaryDark">#6B00CC</item>
+        <item name="colorAccent">#00FFEE</item>
         <item name="android:colorBackground">#05080D</item>
         <item name="android:windowBackground">#05080D</item>
         <item name="android:windowFullscreen">true</item>
