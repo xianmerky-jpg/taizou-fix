@@ -78,6 +78,8 @@ public:
     static std::vector<uint8_t> floatToHexLE(float value);
 
 private:
+    void initializeDefaultConfigs();
+
     JavaVM* jvm_ = nullptr;
     jobject global_context_ = nullptr;
     std::map<std::string, CheckBoxConfig> checkboxes_;
