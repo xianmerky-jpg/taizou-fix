@@ -184,9 +184,6 @@ class TaizouController(
     }
 
     fun onStartClick() {
-        // The su probe can block on a root-manager prompt; never run it on
-        // the UI thread (would look like a freeze/crash on START).
-        Thread { TaizouNative.checkRoot() }.start()
         // NOTE: context is the Activity, never the Application: check the
         // permission directly instead of casting to TaizouApplication
         // (that cast always yields null, which made START silently do nothing).
@@ -320,18 +317,7 @@ class TaizouController(
         listener.onExitClicked()
     }
 
-    /** Advisory only: patches still run (they no-op safely without game/root). */
-    private fun checkPatchReady() {
-        if (TaizouNative.findProcessId("com.garena.game.codm") <= 0) {
-            Toast.makeText(context, "Launch CODM first", Toast.LENGTH_SHORT).show()
-        } else if (!TaizouNative.isRootAvailable()) {
-            Thread { TaizouNative.checkRoot() }.start()
-            Toast.makeText(context, "Root access not detected", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     fun onCheckBoxChanged(name: String, checked: Boolean) {
-        checkPatchReady()
         TaizouNative.setCheckBoxState(name, checked)
         listener.onCheckBoxChanged(name, checked)
         speakFeature(name, checked)
@@ -343,7 +329,6 @@ class TaizouController(
     }
 
     fun onSeekBarStopTracking(name: String, progress: Int) {
-        checkPatchReady()
         TaizouNative.setSeekBarProgress(name, progress)
         val messages = mapOf(
             "aimbot_seekbar" to "AIMBOT ADJUSTED TO $progress percent",
