@@ -853,9 +853,8 @@ bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t&
                 bool accept = check > 0 && score * 100 / check >= 75 &&
                               (score >= 4 || (check == 1 && score == 1));
                 if (accept) {
-                    best = base + i * 8;
-                    LOGD("esp: enemy list @%llx score=%d/%d", (unsigned long long)best, score, check);
-                    listAddr = best;
+                    listAddr = base + i * 8;
+                    LOGD("esp: enemy list @%llx score=%d/%d", (unsigned long long)listAddr, score, check);
                     return true;
                 }
                 if (++checked >= 4000) { done = true; break; }
