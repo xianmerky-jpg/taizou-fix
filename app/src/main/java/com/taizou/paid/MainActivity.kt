@@ -202,7 +202,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         binding.start.setOnCheckedChangeListener { _, checked ->
             if (checked) {
                 startRequested = true
-                waterDropAnimation(binding.game, 150)
+                waterDropAnimation(binding.start, 150)
                 controller.onStartClick()
             } else {
                 startRequested = false
