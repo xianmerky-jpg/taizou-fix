@@ -32,6 +32,16 @@ class TaizouApplication : Application(), LifecycleObserver {
         }
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         TaizouNative.initialize(this)
+        // Unpack skin binaries + background video in background (25MB+ of
+        // assets; never on the UI thread). Radio/skin features execute these
+        // from filesDir, so without this step they silently do nothing.
+        Thread {
+            try {
+                NativeLibraryManager.extractNativeLibraries(this@TaizouApplication)
+            } catch (e: Exception) {
+                Log.e("TaizouApp", "native asset extraction failed", e)
+            }
+        }.start()
     }
 
     @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)

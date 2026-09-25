@@ -58,6 +58,16 @@ object NativeLibraryManager {
 
         // The jniLibs are already packaged in the APK, but we need them in files dir for execution
         // We'll copy them from the APK's lib directory
+
+        // Background video expected at filesDir/bg.mp4 by MainActivity.setupVideo.
+        try {
+            val video = File(filesDir, "bg.mp4")
+            if (!video.exists()) {
+                copyAsset(assetManager, "bg.mp4", video)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stage bg.mp4", e)
+        }
         return true
     }
 

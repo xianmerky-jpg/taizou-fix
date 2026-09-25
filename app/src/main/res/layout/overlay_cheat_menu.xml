@@ -147,6 +147,17 @@
                         android:padding="8dp"
                         android:src="@drawable/ic_skins" />
 
+                    <!-- Page 4 (LEGENDARY) had no menu button; every page needs one -->
+                    <ImageView
+                        android:id="@+id/menu5"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_gravity="center"
+                        android:layout_marginBottom="2dp"
+                        android:background="@android:color/transparent"
+                        android:padding="8dp"
+                        android:src="@drawable/ic_tg" />
+
                     <ImageView
                         android:id="@+id/menu6"
                         android:layout_width="match_parent"

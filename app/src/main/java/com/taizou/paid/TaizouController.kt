@@ -311,7 +311,18 @@ class TaizouController(
         listener.onExitClicked()
     }
 
+    /** Advisory only: patches still run (they no-op safely without game/root). */
+    private fun checkPatchReady() {
+        if (TaizouNative.findProcessId("com.garena.game.codm") <= 0) {
+            Toast.makeText(context, "Launch CODM first", Toast.LENGTH_SHORT).show()
+        } else if (!TaizouNative.isRootAvailable()) {
+            Thread { TaizouNative.checkRoot() }.start()
+            Toast.makeText(context, "Root access not detected", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun onCheckBoxChanged(name: String, checked: Boolean) {
+        checkPatchReady()
         TaizouNative.setCheckBoxState(name, checked)
         listener.onCheckBoxChanged(name, checked)
         speakFeature(name, checked)
@@ -323,6 +334,7 @@ class TaizouController(
     }
 
     fun onSeekBarStopTracking(name: String, progress: Int) {
+        checkPatchReady()
         TaizouNative.setSeekBarProgress(name, progress)
         val messages = mapOf(
             "aimbot_seekbar" to "AIMBOT ADJUSTED TO $progress percent",
@@ -366,6 +378,7 @@ class TaizouController(
         val action = if (checked) "activated" else "deactivated"
         val featureNames = mapOf(
             "report" to "Hold Report",
+            "clogs" to "Clear Logs",
             "tut" to "Skip Tutorial",
             "floatmenu4" to "Unlock FPS",
             "memory" to "Memory Stable",

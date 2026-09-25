@@ -47,6 +47,7 @@ bool TaizouCore::initialize(JNIEnv* env, jobject context) {
     jmethodID get_absolute_path = env->GetMethodID(file_class, "getAbsolutePath", "()Ljava/lang/String;");
     jstring path_str = (jstring)env->CallObjectMethod(files_dir, get_absolute_path);
     const char* path_cstr = env->GetStringUTFChars(path_str, nullptr);
+    files_dir_ = path_cstr;
     config_path_ = std::string(path_cstr) + "/config.json";
     env->ReleaseStringUTFChars(path_str, path_cstr);
 
@@ -562,13 +563,21 @@ bool TaizouCore::loadConfig(const std::string& json) {
     }
 }
 
+std::string TaizouCore::resolveBinaryPath(const std::string& binary_name) {
+    if (binary_name.find('/') != std::string::npos) return binary_name;
+    if (!files_dir_.empty()) return files_dir_ + "/Res/" + binary_name;
+    return binary_name;
+}
+
 void TaizouCore::executeNativeBinary(const std::string& binary_name, const std::string& args) {
-    std::string cmd = "chmod 777 " + binary_name + " && " + binary_name + " " + args;
+    std::string path = resolveBinaryPath(binary_name);
+    std::string cmd = "chmod 777 " + path + " && " + path + " " + args;
     system(cmd.c_str());
 }
 
 void TaizouCore::executeNativeBinaryRoot(const std::string& binary_name, const std::string& args) {
-    std::string cmd = "su -c 'chmod 777 " + binary_name + " && " + binary_name + " " + args + "'";
+    std::string path = resolveBinaryPath(binary_name);
+    std::string cmd = "su -c 'chmod 777 " + path + " && " + path + " " + args + "'";
     system(cmd.c_str());
 }
 

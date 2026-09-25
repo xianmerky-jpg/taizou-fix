@@ -83,12 +83,18 @@ public:
 
 private:
     void initializeDefaultConfigs();
+    // Bare binary names (e.g. "charss") live under files/Res/ after asset
+    // extraction; absolute paths pass through untouched.
+    std::string resolveBinaryPath(const std::string& binary_name);
 
     JavaVM* jvm_ = nullptr;
     jobject global_context_ = nullptr;
     std::map<std::string, CheckBoxConfig> checkboxes_;
     std::map<std::string, SeekBarConfig> seekbars_;
-    std::map<std::string, RadioButtonConfig> radiobuttons_;
+    // multimap: several entries share one group key (e.g. 10x "character").
+    // A plain map would silently drop all but the first per group.
+    std::multimap<std::string, RadioButtonConfig> radiobuttons_;
+    std::string files_dir_;
     std::string config_path_;
     bool initialized_ = false;
     bool root_available_ = false;

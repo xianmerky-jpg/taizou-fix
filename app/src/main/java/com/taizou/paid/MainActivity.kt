@@ -98,6 +98,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private var menu2: ImageView? = null
     private var menu3: ImageView? = null
     private var menu4: ImageView? = null
+    private var menu5: ImageView? = null
     private var menu6: ImageView? = null
 
     // Clock animation
@@ -338,6 +339,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             this@MainActivity.menu2 = menu2
             this@MainActivity.menu3 = menu3
             this@MainActivity.menu4 = menu4
+            this@MainActivity.menu5 = menu5
             this@MainActivity.menu6 = menu6
 
             this@MainActivity.pg = pg
@@ -356,6 +358,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             menu2?.setOnClickListener { onMenuClick(1) }
             menu3?.setOnClickListener { onMenuClick(2) }
             menu4?.setOnClickListener { onMenuClick(3) }
+            menu5?.setOnClickListener { onMenuClick(4) }
             menu6?.setOnClickListener { onMenuClick(5) }
 
             pg?.addOnPageChangeListener(object : ViewPager.OnPageChangeListener {
@@ -390,6 +393,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             pg?.post {
                 initializeCheckboxes()
                 initializeSeekBars()
+                initializeRadioButtons()
+                initializeSettingsButtons()
             }
             initializeRadioButtons()
         }
@@ -471,7 +476,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     }
 
     private fun updateMenuButtonStyles() {
-        val menus = listOf(menu1, menu2, menu3, menu4, menu6)
+        val menus = listOf(menu1, menu2, menu3, menu4, menu5, menu6)
         menus.forEachIndexed { index, menu ->
             menu?.let {
                 val isSelected = index == currentPage
@@ -709,7 +714,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             R.id.noreload, R.id.fscope, R.id.fastsw,
             R.id.speed, R.id.advance, R.id.crouch, R.id.walk,
             R.id.paldo, R.id.noshakegun, R.id.nop, R.id.spect,
-            R.id.br, R.id.un
+            R.id.br, R.id.un, R.id.hit, R.id.pump
         ).map { pager.findViewById<View>(it) as? CompoundButton }
 
         checkboxes.forEach { cb ->
@@ -727,6 +732,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     fun onPageInflated(page: View) {
         initializeCheckboxes(page)
         initializeSeekBars(page)
+        initializeRadioButtons(page)
+        initializeSettingsButtons(page)
     }
 
     private fun getCheckboxName(cb: CompoundButton): String? {
@@ -758,6 +765,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             R.id.spect -> "spect"
             R.id.br -> "br"
             R.id.un -> "un"
+            R.id.hit -> "hit"
+            R.id.pump -> "pump"
             else -> null
         }
     }
@@ -810,9 +819,70 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         }
     }
 
-    private fun initializeRadioButtons() {
-        // Setup radio groups from overlay pages
-        // This would be done when each page fragment is created
+    // Layout radio-button id -> native group. Ids match native option names;
+    // one Android RadioGroup may span several native groups, so resolve per
+    // button, not per group. Unknown ids are ignored (e.g. nosmokee).
+    private val radioGroupByName = mapOf(
+        "shepherd" to "character", "sophia" to "character", "spectre" to "character",
+        "templar" to "character", "siren" to "character", "ghost" to "character",
+        "lazarus" to "character", "noir" to "character", "starlight" to "character",
+        "homelander" to "character",
+        "chunli" to "legend", "ryu" to "legend", "cammy" to "legend", "akuma" to "legend",
+        "vivian" to "epic", "pader" to "epic",
+        "offcamo" to "camo", "diamond" to "camo", "redsprite" to "camo",
+        "emerald" to "camo", "assault" to "camo", "scorch" to "camo",
+        "ak117" to "gun", "bp50" to "gun", "ffar" to "gun", "grau" to "gun",
+        "krig6" to "gun", "type19" to "gun", "dlq" to "gun", "jak" to "gun",
+        "lucos" to "gun",
+        "tang" to "melee", "longq" to "melee", "spear" to "melee",
+        "scissors" to "melee", "tomahawk" to "melee", "saber" to "melee",
+        "fiery" to "melee", "dark" to "melee",
+        "fennec" to "guns2", "mg40" to "guns2", "qq9" to "guns2",
+        "m13" to "guns2", "x9" to "guns2",
+        "sand" to "equip", "jetpack" to "equip", "farflight" to "equip",
+        "mechair" to "equip",
+        "warden" to "legendary_skin",
+        "yorsha" to "epic_skin", "Rambo" to "epic_skin", "Ferg" to "epic_skin",
+        "Roze" to "epic_skin", "Kestrel" to "epic_skin",
+        "kuji" to "mythic_skin"
+    )
+
+    private fun initializeRadioButtons(root: View? = pg) {
+        val pager = root ?: return
+        val groups = mutableListOf<RadioGroup>()
+        collectRadioGroups(pager, groups)
+        for (group in groups) {
+            group.setOnCheckedChangeListener { _, checkedId ->
+                if (checkedId == View.NO_ID) return@setOnCheckedChangeListener
+                val entry = try {
+                    resources.getResourceEntryName(checkedId)
+                } catch (e: Exception) {
+                    null
+                } ?: return@setOnCheckedChangeListener
+                val nativeGroup = radioGroupByName[entry] ?: return@setOnCheckedChangeListener
+                controller.onRadioButtonChanged(nativeGroup, entry)
+            }
+        }
+    }
+
+    private fun collectRadioGroups(root: View, out: MutableList<RadioGroup>) {
+        if (root is RadioGroup) out.add(root)
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) collectRadioGroups(root.getChildAt(i), out)
+        }
+    }
+
+    private fun initializeSettingsButtons(root: View? = pg) {
+        val pager = root ?: return
+        (pager.findViewById<View>(R.id.saveconfig) as? Button)?.setOnClickListener {
+            controller.onSaveConfig()
+        }
+        (pager.findViewById<View>(R.id.loadconfig) as? Button)?.setOnClickListener {
+            controller.onLoadConfig()
+        }
+        (pager.findViewById<View>(R.id.killgame) as? Button)?.setOnClickListener {
+            controller.onExitClick()
+        }
     }
 
     private fun showCustomToast(message: String) {
