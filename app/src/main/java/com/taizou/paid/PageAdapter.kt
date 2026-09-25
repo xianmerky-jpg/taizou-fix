@@ -1,15 +1,18 @@
 package com.taizou.paid
 
-import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
-import androidx.fragment.app.FragmentPagerAdapter
-import androidx.viewpager.widget.ViewPager
+import androidx.viewpager.widget.PagerAdapter
 
-class PageAdapter(activity: FragmentActivity) : FragmentPagerAdapter(activity.supportFragmentManager, BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
+// NOTE: plain view-based PagerAdapter, deliberately NOT FragmentPagerAdapter.
+// The ViewPager lives in a WindowManager overlay window, outside the activity
+// content view, so the activity's FragmentManager can never resolve its
+// container id and crashes with "No view found for id pg for fragment
+// PageFragment". Fragments are unnecessary here anyway: each page is just an
+// inflated layout whose views are wired via onPageInflated().
+class PageAdapter(private val activity: FragmentActivity) : PagerAdapter() {
 
     private val pageLayouts = intArrayOf(
         R.layout.page_main,
@@ -22,8 +25,17 @@ class PageAdapter(activity: FragmentActivity) : FragmentPagerAdapter(activity.su
 
     override fun getCount(): Int = pageLayouts.size
 
-    override fun getItem(position: Int): Fragment {
-        return PageFragment.newInstance(pageLayouts[position])
+    override fun isViewFromObject(view: View, obj: Any): Boolean = view === obj
+
+    override fun instantiateItem(container: ViewGroup, position: Int): Any {
+        val view = activity.layoutInflater.inflate(pageLayouts[position], container, false)
+        container.addView(view)
+        (activity as? MainActivity)?.onPageInflated(view)
+        return view
+    }
+
+    override fun destroyItem(container: ViewGroup, position: Int, obj: Any) {
+        container.removeView(obj as View)
     }
 
     override fun getPageTitle(position: Int): CharSequence? {
@@ -36,35 +48,5 @@ class PageAdapter(activity: FragmentActivity) : FragmentPagerAdapter(activity.su
             5 -> "SETTINGS"
             else -> ""
         }
-    }
-}
-
-class PageFragment : Fragment() {
-
-    private var layoutRes: Int = 0
-
-    companion object {
-        fun newInstance(layoutRes: Int): PageFragment {
-            val fragment = PageFragment()
-            val args = Bundle()
-            args.putInt("layout_res", layoutRes)
-            fragment.arguments = args
-            return fragment
-        }
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        arguments?.let { layoutRes = it.getInt("layout_res", 0) }
-    }
-
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View? {
-        val view = inflater.inflate(layoutRes, container, false)
-        (activity as? MainActivity)?.onPageInflated(view)
-        return view
     }
 }
