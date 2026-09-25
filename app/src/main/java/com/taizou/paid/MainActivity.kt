@@ -84,7 +84,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private var espParams: WindowManager.LayoutParams? = null
     private var espThread: Thread? = null
     private var espRunning = false
-    private var espHintShown = false
     private val espFlags = mutableSetOf<String>()
 
     // Touch handling for overlay
@@ -108,6 +107,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private var menu4: ImageView? = null
     private var menu5: ImageView? = null
     private var menu6: ImageView? = null
+    private var menu7: ImageView? = null
 
     // Clock animation
     private val clockHandler = Handler(Looper.getMainLooper())
@@ -350,6 +350,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             this@MainActivity.menu4 = menu4
             this@MainActivity.menu5 = menu5
             this@MainActivity.menu6 = menu6
+            this@MainActivity.menu7 = menu7
 
             this@MainActivity.pg = pg
             pageAdapter = PageAdapter(this@MainActivity)
@@ -369,6 +370,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             menu4?.setOnClickListener { onMenuClick(3) }
             menu5?.setOnClickListener { onMenuClick(4) }
             menu6?.setOnClickListener { onMenuClick(5) }
+            menu7?.setOnClickListener { onMenuClick(6) }
 
             pg?.addOnPageChangeListener(object : ViewPager.OnPageChangeListener {
                 override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {}
@@ -458,10 +460,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 // behind the collapsed cheat menu.
                 if (!cheatMenuExpanded) toggleCheatMenu()
                 showEspWindow()
-                if (!espHintShown) {
-                    espHintShown = true
-                    Toast.makeText(this, "Swipe menu for the ESP page", Toast.LENGTH_LONG).show()
-                }
                 showCustomToast("IMGUI Restored")
                 speakText("IMGUI Restored")
             } else {
@@ -626,7 +624,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     }
 
     private fun updateMenuButtonStyles() {
-        val menus = listOf(menu1, menu2, menu3, menu4, menu5, menu6)
+        val menus = listOf(menu1, menu2, menu3, menu4, menu5, menu6, menu7)
         menus.forEachIndexed { index, menu ->
             menu?.let {
                 val isSelected = index == currentPage
