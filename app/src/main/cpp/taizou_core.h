@@ -100,7 +100,7 @@ public:
         float headSX = 0, headSY = 0;             // screen
         float rootSX = 0, rootSY = 0;             // screen
         float boxW = 0, boxH = 0;
-        float dist = 0, curHP = 0, maxHP = 0;
+        float dist = -1, curHP = 0, maxHP = 0;
         char name[48] = {0};
         float bones[16][3] = {};                  // screen x, y, visible
         bool projected = false;
@@ -140,7 +140,7 @@ private:
     bool espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t& listAddr) const;
     bool espReadList(int fd, uint64_t listAddr, std::vector<uint64_t>& pawns) const;
     bool espFindMatrix(int fd, const std::vector<EspEntity>& ents, int viewW, int viewH,
-                       float outM[16], uintptr_t& outMatrixOff) const;
+                       float outM[16], uintptr_t& outMatrixOff, uint64_t& outMatrixAddr) const;
     bool espMapsRegions(int pid, uint64_t& rxStart, uint64_t& rxEnd,
                         std::vector<std::pair<uint64_t, uint64_t>>& rwRegions) const;
 
@@ -153,7 +153,10 @@ private:
     uint64_t espListAddr_ = 0;     // validated EnemyPawns list object
     uint64_t espMatchGameOverride_ = 0;
     bool espMatrixOverride_ = false;
+    uint64_t espMatrixAddr_ = 0;   // where the winning VP matrix was read
     int espPid_ = 0;
+    int espPollCount_ = 0;
+    int espNoListCooldown_ = 0;
 
     JavaVM* jvm_ = nullptr;
     jobject global_context_ = nullptr;

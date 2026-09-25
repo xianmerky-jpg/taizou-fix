@@ -103,11 +103,12 @@ class EspOverlayView @JvmOverloads constructor(
                 )
             }
             if ("esp_skeleton" in enabled) drawSkeleton(canvas, it, col)
-            // Name/distance/health-top share the <=60m gate.
-            if (it.dist <= 60f) {
-                if ("esp_name" in enabled) drawName(canvas, it, h, s)
-                if ("esp_distance" in enabled) drawDistance(canvas, it, h, s)
-                if ("esp_health" in enabled) drawHealthTop(canvas, it, h, s)
+            // Name/distance/health-top share the <=60m gate. Screen coords from
+            // native are already top-left origin (no extra flip).
+            if (it.dist in 0f..60f) {
+                if ("esp_name" in enabled) drawName(canvas, it, s)
+                if ("esp_distance" in enabled) drawDistance(canvas, it, s)
+                if ("esp_health" in enabled) drawHealthTop(canvas, it, s)
             }
         }
     }
@@ -123,21 +124,21 @@ class EspOverlayView @JvmOverloads constructor(
         }
     }
 
-    private fun drawName(canvas: Canvas, it: Item, h: Float, s: Float) {
+    private fun drawName(canvas: Canvas, it: Item, s: Float) {
         val hasHealth = "esp_health" in enabled
         val cw = it.boxW * 1.6f * s
         val cx = it.headX - cw / 2f
-        val cy = h - it.headY - 50f * s
+        val cy = it.headY - 50f * s
         val ch = 24f * s + (if (hasHealth) 10f * s else 0f)
         canvas.drawRect(cx, cy, cx + cw, cy + ch, fillPaint.apply { color = Color.argb(120, 0, 0, 0) })
         textPaint.textSize = 18f * s
         canvas.drawText(it.name, cx + cw / 2f, cy + 20f * s, textPaint)
     }
 
-    private fun drawHealthTop(canvas: Canvas, it: Item, h: Float, s: Float) {
+    private fun drawHealthTop(canvas: Canvas, it: Item, s: Float) {
         val cw = it.boxW * 1.6f * s
         val cx = it.headX - cw / 2f
-        val cy = h - it.headY - 50f * s
+        val cy = it.headY - 50f * s
         val max = if (it.maxHp > 0) it.maxHp else 100f
         val ratio = (it.hp / max).coerceIn(0f, 1f)
         val pad = 5f * s
@@ -152,7 +153,7 @@ class EspOverlayView @JvmOverloads constructor(
         canvas.drawRect(bx, by, bx + bw * ratio, by + barH, fillPaint.apply { color = Color.rgb(r, g, 0) })
     }
 
-    private fun drawDistance(canvas: Canvas, it: Item, h: Float, s: Float) {
+    private fun drawDistance(canvas: Canvas, it: Item, s: Float) {
         val label = "${it.dist.toInt()}m"
         val scale = when {
             it.dist >= 19f -> 1.3f
@@ -164,7 +165,7 @@ class EspOverlayView @JvmOverloads constructor(
         val tw = textPaint.measureText(label)
         val cw = tw + 8f * s
         val cx = it.headX - cw / 2f
-        val cy = h - it.rootY + 8f * s
+        val cy = it.rootY + 8f * s
         val ch = textPaint.textSize + 8f * s
         canvas.drawRect(cx, cy, cx + cw, cy + ch, fillPaint.apply { color = Color.argb(120, 0, 0, 0) })
         canvas.drawText(label, cx + cw / 2f, cy + 4f * s + textPaint.textSize, textPaint)

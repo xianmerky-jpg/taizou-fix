@@ -614,6 +614,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             } ?: continue
             (pager.findViewById<View>(id) as? CompoundButton)?.setOnCheckedChangeListener { _, checked ->
                 if (checked) espFlags.add(key) else espFlags.remove(key)
+                val label = "ESP " + key.removePrefix("esp_").replaceFirstChar { it.uppercase() }
+                speakText("$label ${if (checked) "activated" else "deactivated"}")
             }
         }
     }
