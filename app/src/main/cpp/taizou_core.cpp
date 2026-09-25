@@ -478,6 +478,32 @@ void TaizouCore::setRadioButtonState(const std::string& group, const std::string
     }
 }
 
+// Ports the original AndLua auto-bypass: 18 libanogs.so patches written once
+// the game process and library are present. Same offsets/bytes, same order.
+bool TaizouCore::applyAutoBypass() {
+    static const uintptr_t kAnogsOffsets[] = {
+        0x25164C, 0x204218, 0x24D534, 0x258DA0,
+        0x261DC0, 0x26E6E8, 0x331ED8, 0x374374,
+        0x419B6C, 0x41BA40, 0x42844C, 0x42DF74,
+        0x444D68, 0x44A3F0, 0x44BC90, 0x494F48,
+        0x497E64, 0x4A9944
+    };
+    static const char* kBypassBytes = "h00 00 80 D2 C0 03 5F D6";
+
+    int pid = findProcessId("com.garena.game.codm");
+    if (pid <= 0) return false;
+
+    bool ok = true;
+    for (uintptr_t offset : kAnogsOffsets) {
+        MemoryPatch patch;
+        patch.lib_name = "libanogs.so";
+        patch.offset = offset;
+        patch.bytes = hexStringToBytes(kBypassBytes);
+        if (!applyMemoryPatch(pid, patch)) ok = false;
+    }
+    return ok;
+}
+
 std::string TaizouCore::saveConfig() {
     std::ostringstream oss;
     oss << "{";
@@ -681,4 +707,19 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* /*reserved*/) {
     static taizou::TaizouCore core;
     (void)vm;
     return JNI_VERSION_1_6;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_taizou_paid_TaizouNative_applyAutoBypass(JNIEnv* env, jobject thiz) {
+    if (!taizou::g_instance) return JNI_FALSE;
+    return taizou::g_instance->applyAutoBypass() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_taizou_paid_TaizouNative_isLibraryLoaded(JNIEnv* env, jobject thiz, jint pid, jstring libName) {
+    if (!taizou::g_instance) return JNI_FALSE;
+    const char* lib = env->GetStringUTFChars(libName, nullptr);
+    bool result = taizou::g_instance->getLibraryBaseAddress((int)pid, lib) != 0;
+    env->ReleaseStringUTFChars(libName, lib);
+    return result ? JNI_TRUE : JNI_FALSE;
 }

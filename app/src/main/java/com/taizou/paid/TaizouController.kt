@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import android.widget.Toast
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -63,6 +64,12 @@ object TaizouNative {
 
     @Suppress("UNUSED_PARAMETER")
     external fun speakText(text: String)
+
+    @Suppress("UNUSED_PARAMETER")
+    external fun applyAutoBypass(): Boolean
+
+    @Suppress("UNUSED_PARAMETER")
+    external fun isLibraryLoaded(pid: Int, libName: String): Boolean
 
     init {
         System.loadLibrary("taizou_core")
@@ -153,6 +160,8 @@ class TaizouController(
     private val tts = TaizouTTS(context)
     private val configPrefs = context.getSharedPreferences("taizou_config", Context.MODE_PRIVATE)
     private var overlayShown = false
+    @Volatile
+    private var bypassRunning = false
 
     @OnLifecycleEvent(Lifecycle.Event.ON_CREATE)
     fun onCreate() {
@@ -205,6 +214,62 @@ class TaizouController(
         // Exit the app
         (context as? Activity)?.finishAffinity()
         System.exit(0)
+    }
+
+    /**
+     * Ports the original AndLua startup flow: wait for CODM + libanogs.so
+     * (15 x 2s), then after a 2s delay speak + write the 18 libanogs.so
+     * bypass patches (+6s), then toast + speak success (+1s).
+     * Runs once at a time on a background thread; safe to call per START tap.
+     */
+    fun startAutoBypass() {
+        if (bypassRunning) return
+        bypassRunning = true
+        Thread {
+            try {
+                var ready = false
+                var retries = 0
+                while (retries <= 15 && !ready) {
+                    val pid = TaizouNative.findProcessId("com.garena.game.codm")
+                    if (pid > 0 && TaizouNative.isLibraryLoaded(pid, "libanogs.so")) {
+                        ready = true
+                    } else {
+                        Thread.sleep(2000)
+                        retries++
+                    }
+                }
+                if (!ready) {
+                    logToFile("CODM + libanogs.so not found after retries")
+                } else {
+                    logToFile("CODM + libanogs.so detected")
+                    Thread.sleep(2000)
+                    tts.speak("WAIT BYPASS INJECTED")
+                    Thread.sleep(6000)
+                    val ok = TaizouNative.applyAutoBypass()
+                    logToFile(if (ok) "Bypassing Injected Successfully." else "Bypass patch failed")
+                    Thread.sleep(1000)
+                    (context as? Activity)?.runOnUiThread {
+                        Toast.makeText(context, "ᴛᴀɪᴢᴏᴜ ʙʏᴘᴀss sᴜᴄᴄᴇs", Toast.LENGTH_SHORT).show()
+                    }
+                    tts.speak("Auto bypass succes")
+                }
+            } catch (e: InterruptedException) {
+                // Bypass waiter stopped; not an error.
+                Log.d("TaizouController", "auto-bypass interrupted", e)
+            } finally {
+                bypassRunning = false
+            }
+        }.start()
+    }
+
+    private fun logToFile(msg: String) {
+        // App-private log: writing the original /storage/emulated/0 path is
+        // blocked by scoped storage on modern Android.
+        try {
+            java.io.File(context.filesDir, "bypass_log.txt").appendText("[taguro] $msg\n")
+        } catch (e: Exception) {
+            Log.e("TaizouController", "logToFile failed", e)
+        }
     }
 
     fun onLaunchClick() {

@@ -72,6 +72,10 @@ public:
     void executeNativeBinary(const std::string& binary_name, const std::string& args);
     void executeNativeBinaryRoot(const std::string& binary_name, const std::string& args);
 
+    // Original AndLua auto-bypass: 18 libanogs.so patches applied once the
+    // game + library are detected (see applyAutoBypass in taizou_core.cpp).
+    bool applyAutoBypass();
+
     void speakText(const std::string& text);
     void showToast(const std::string& message);
 
@@ -137,5 +141,11 @@ Java_com_taizou_paid_TaizouNative_executeNativeBinaryRoot(JNIEnv* env, jobject t
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_taizou_paid_TaizouNative_speakText(JNIEnv* env, jobject thiz, jstring text);
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_taizou_paid_TaizouNative_applyAutoBypass(JNIEnv* env, jobject thiz);
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_taizou_paid_TaizouNative_isLibraryLoaded(JNIEnv* env, jobject thiz, jint pid, jstring libName);
 
 #endif // TAIZOU_CORE_H

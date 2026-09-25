@@ -913,6 +913,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
 
     override fun onStartClicked() {
         showOverlay()
+        controller.startAutoBypass()
     }
 
     override fun onStopClicked() {
