@@ -245,13 +245,22 @@ class TaizouController(
                     Thread.sleep(2000)
                     tts.speak("WAIT BYPASS INJECTED")
                     Thread.sleep(6000)
+                    // NOTE: the success feedback must depend on the real result.
+                    // Unconditional toast/voice made a failed bypass look perfect.
                     val ok = TaizouNative.applyAutoBypass()
                     logToFile(if (ok) "Bypassing Injected Successfully." else "Bypass patch failed")
                     Thread.sleep(1000)
-                    (context as? Activity)?.runOnUiThread {
-                        Toast.makeText(context, "ᴛᴀɪᴢᴏᴜ ʙʏᴘᴀss sᴜᴄᴄᴇs", Toast.LENGTH_SHORT).show()
+                    if (ok) {
+                        (context as? Activity)?.runOnUiThread {
+                            Toast.makeText(context, "ᴛᴀɪᴢᴏᴜ ʙʏᴘᴀss sᴜᴄᴄᴇs", Toast.LENGTH_SHORT).show()
+                        }
+                        tts.speak("Auto bypass succes")
+                    } else {
+                        (context as? Activity)?.runOnUiThread {
+                            Toast.makeText(context, "Bypass failed: need root and running game", Toast.LENGTH_LONG).show()
+                        }
+                        tts.speak("Bypass failed")
                     }
-                    tts.speak("Auto bypass succes")
                 }
             } catch (e: InterruptedException) {
                 // Bypass waiter stopped; not an error.
