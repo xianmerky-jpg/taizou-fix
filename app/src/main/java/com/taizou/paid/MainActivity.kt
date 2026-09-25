@@ -62,7 +62,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 import kotlin.math.min
 
-class MainActivity : AppCompatActivity(), TaizouController.OnConfigChangeListener, LifecycleObserver {
+class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObserver {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var controller: TaizouController
