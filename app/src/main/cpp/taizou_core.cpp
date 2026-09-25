@@ -13,8 +13,8 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
-#include <thread>
-#include <chrono>
+#include <cmath>
+#include <utility>
 
 #define LOG_TAG "TaizouCore"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
@@ -615,6 +615,309 @@ void TaizouCore::clearLogs() {
     }
 }
 
+// ================= External ESP (reads only, never writes) =================
+
+namespace {
+// Reference field offsets (validated per entity at runtime; garbage fails closed).
+constexpr uintptr_t kEspPlayerInfo = 0x5C0;
+constexpr uintptr_t kEspAlive = 0x548;
+constexpr uintptr_t kEspBot = 0x5B9;
+constexpr uintptr_t kEspHeadBone = 0x308;
+constexpr uintptr_t kEspMesh = 0x628;
+constexpr uintptr_t kEspAttackInfo = 0x78;
+constexpr uintptr_t kEspCurHP = 0x34;
+constexpr uintptr_t kEspMaxHP = 0x38;
+constexpr uintptr_t kEspBoneMap = 0xA8;
+constexpr uintptr_t kEspBoneTable = 0x10;
+constexpr uintptr_t kEspBoneNode = 0x40;
+// Index: 0 Head,1 Neck,2 Body,3 Hips,4 LUpperArm,5 LArm,6 LHand,7 RUpperArm,
+// 8 RArm,9 RHand,10 LPaha,11 LBetis,12 LToe,13 RPaha,14 RBetis,15 RToe.
+constexpr uintptr_t kEspBoneSlots[16] = {
+    0x70, 0x90, 0x98, 0x50, 0x68, 0x60, 0x58, 0x88,
+    0x80, 0x78, 0x30, 0x28, 0x20, 0x48, 0x40, 0x38
+};
+// Candidate localToWorld-matrix offsets inside a Unity Transform. Tried in
+// order; a candidate only wins if it yields anatomically sane projections.
+constexpr uintptr_t kEspMatrixCandidates[] = {
+    0xB0, 0xC0, 0xD0, 0xE0, 0xF0, 0x100, 0x110, 0x120
+};
+constexpr int kEspMaxEntities = 48;
+constexpr uint64_t kEspScanCap = 256ull * 1024 * 1024;
+}
+
+bool TaizouCore::espRead(int fd, uintptr_t addr, void* out, size_t len) const {
+    if (fd < 0 || addr == 0 || out == nullptr || len == 0) return false;
+    return pread(fd, out, len, (off_t)addr) == (ssize_t)len;
+}
+
+uint64_t TaizouCore::espU64(int fd, uintptr_t addr) const {
+    uint64_t v = 0;
+    espRead(fd, addr, &v, sizeof(v));
+    return v;
+}
+
+int32_t TaizouCore::espI32(int fd, uintptr_t addr) const {
+    int32_t v = 0;
+    espRead(fd, addr, &v, sizeof(v));
+    return v;
+}
+
+float TaizouCore::espF32(int fd, uintptr_t addr) const {
+    float v = 0;
+    espRead(fd, addr, &v, sizeof(v));
+    return v;
+}
+
+int TaizouCore::espScorePawn(int fd, uint64_t pawn) const {
+    if (pawn == 0 || (pawn & 0x7) != 0) return 0;
+    int score = 0;
+    uint64_t info = espU64(fd, pawn + kEspPlayerInfo);
+    if (info != 0) {
+        score++;
+        float hp = espF32(fd, info + kEspCurHP);
+        if (hp == hp && hp > -100.0f && hp < 1000000.0f) score++;
+    }
+    if (espU64(fd, pawn + kEspHeadBone) != 0) score++;
+    if (espU64(fd, pawn + kEspMesh) != 0) score++;
+    return score;
+}
+
+bool TaizouCore::espReadName(int fd, uint64_t pawn, bool isBot, char out[48]) const {
+    if (isBot) {
+        strncpy(out, "BOT", 48);
+        out[47] = '\0';
+        return true;
+    }
+    uint64_t info = espU64(fd, pawn + kEspPlayerInfo);
+    if (info == 0) return false;
+    uint64_t str = espU64(fd, info + 0x158);
+    if (str == 0) return false;
+    int32_t len = espI32(fd, str + 0x10);
+    if (len <= 0 || len > 40) return false;
+    uint16_t buf[40];
+    if (!espRead(fd, str + 0x14, buf, (size_t)len * 2)) return false;
+    int n = len < 47 ? len : 47;
+    for (int i = 0; i < n; i++) {
+        uint16_t c = buf[i];
+        out[i] = (c >= 0x20 && c < 0x80) ? (char)c : '?';
+    }
+    out[n] = '\0';
+    return true;
+}
+
+bool TaizouCore::espBoneWorld(int fd, uint64_t transformPtr, uintptr_t matrixOff, EspVec3& out) const {
+    if (transformPtr == 0) return false;
+    float m[16];
+    if (!espRead(fd, transformPtr + matrixOff, m, sizeof(m))) return false;
+    float tx = m[12], ty = m[13], tz = m[14];
+    if (!(tx == tx && ty == ty && tz == tz)) return false;
+    if (tx > 30000 || tx < -30000 || ty > 30000 || ty < -30000 || tz > 30000 || tz < -30000) return false;
+    float r0 = m[0] * m[0] + m[1] * m[1] + m[2] * m[2];
+    float r1 = m[4] * m[4] + m[5] * m[5] + m[6] * m[6];
+    float r2 = m[8] * m[8] + m[9] * m[9] + m[10] * m[10];
+    if (r0 < 0.05f || r0 > 20.0f || r1 < 0.05f || r1 > 20.0f || r2 < 0.05f || r2 > 20.0f) return false;
+    out.x = tx;
+    out.y = ty;
+    out.z = tz;
+    return true;
+}
+
+bool TaizouCore::espProject(const float m[16], const EspVec3& w, int viewW, int viewH, float& sx, float& sy) const {
+    float cx = m[0] * w.x + m[4] * w.y + m[8] * w.z + m[12];
+    float cy = m[1] * w.x + m[5] * w.y + m[9] * w.z + m[13];
+    float cw = m[3] * w.x + m[7] * w.y + m[11] * w.z + m[15];
+    if (!(cw > 0.01f)) return false;
+    float nx = cx / cw, ny = cy / cw;
+    if (nx < -1.5f || nx > 1.5f || ny < -1.5f || ny > 1.5f) return false;
+    sx = (nx * 0.5f + 0.5f) * viewW;
+    sy = (1.0f - (ny * 0.5f + 0.5f)) * viewH;  // fold Unity bottom-left flip here
+    return true;
+}
+
+bool TaizouCore::espMapsRegions(int pid, uint64_t& rxStart, uint64_t& rxEnd,
+                                std::vector<std::pair<uint64_t, uint64_t>>& rwRegions) const {
+    rxStart = rxEnd = 0;
+    rwRegions.clear();
+    std::string path = "/proc/" + std::to_string(pid) + "/maps";
+    std::ifstream maps(path);
+    if (!maps.is_open()) return false;
+    std::string line;
+    while (std::getline(maps, line)) {
+        if (line.find("libunity.so") == std::string::npos) continue;
+        size_t dash = line.find('-');
+        size_t sp = line.find(' ', dash == std::string::npos ? 0 : dash);
+        if (dash == std::string::npos || sp == std::string::npos) continue;
+        uint64_t start = 0, end = 0;
+        try {
+            start = std::stoull(line.substr(0, dash), nullptr, 16);
+            end = std::stoull(line.substr(dash + 1, sp - dash - 1), nullptr, 16);
+        } catch (...) { continue; }
+        if (end <= start) continue;
+        if (line.find("r-xp") != std::string::npos) {
+            if (rxStart == 0) { rxStart = start; rxEnd = end; }
+            else if (end > rxEnd) rxEnd = end;
+        } else if (line.find("rw-p") != std::string::npos) {
+            if (end - start <= 256ull * 1024 * 1024) rwRegions.emplace_back(start, end);
+        }
+    }
+    return rxStart != 0;
+}
+
+static bool espHeapRegions(int pid, std::vector<std::pair<uint64_t, uint64_t>>& out, uint64_t cap) {
+    out.clear();
+    std::string path = "/proc/" + std::to_string(pid) + "/maps";
+    std::ifstream maps(path);
+    if (!maps.is_open()) return false;
+    uint64_t total = 0;
+    std::string line;
+    while (std::getline(maps, line)) {
+        if (line.find("rw-p") == std::string::npos) continue;
+        size_t dash = line.find('-');
+        size_t sp = line.find(' ', dash == std::string::npos ? 0 : dash);
+        if (dash == std::string::npos || sp == std::string::npos) continue;
+        // Heap + anonymous mappings only (no file path, no libunity).
+        size_t pathPos = line.find('/', sp);
+        bool heapish = line.find("[heap]") != std::string::npos || line.find("[anon:") != std::string::npos;
+        if (pathPos != std::string::npos && !heapish) continue;
+        uint64_t start = 0, end = 0;
+        try {
+            start = std::stoull(line.substr(0, dash), nullptr, 16);
+            end = std::stoull(line.substr(dash + 1, sp - dash - 1), nullptr, 16);
+        } catch (...) { continue; }
+        if (end <= start || end - start < 4096) continue;
+        uint64_t take = std::min(end - start, cap - total);
+        if (take < 4096) break;
+        out.emplace_back(start, start + take);
+        total += take;
+        if (total >= cap) break;
+    }
+    return !out.empty();
+}
+
+bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t& listAddr) const {
+    // Cheap pre-filter in bulk chunks; full pawn validation only on hits.
+    std::vector<std::pair<uint64_t, uint64_t>> regions;
+    // Caller passes heap regions via reuse of rwRegions trick: scan heap here.
+    (void)rxStart;
+    (void)rxEnd;
+    if (!espHeapRegions(espPid_, regions, kEspScanCap)) {
+        LOGE("esp: no heap regions");
+        return false;
+    }
+    const size_t kChunk = 1024 * 1024;
+    std::vector<uint8_t> buf(kChunk + 64);
+    uint64_t best = 0;
+    int bestScore = 0, checked = 0;
+    bool done = false;
+    for (auto [rs, re] : regions) {
+        if (done) break;
+        for (uint64_t base = rs; base < re && !done; base += kChunk) {
+            size_t len = (size_t)std::min<uint64_t>(kChunk + 64, re - base);
+            if (len < 64 || !espRead(fd, base, buf.data(), len)) continue;
+            size_t n = (len - 64) / 8;
+            for (size_t i = 0; i < n; i++) {
+                int32_t sz = 0;
+                memcpy(&sz, buf.data() + i * 8 + 0x18, 4);
+                if (sz < 1 || sz > 48) continue;
+                uint64_t items = 0;
+                memcpy(&items, buf.data() + i * 8 + 0x10, 8);
+                if (items == 0 || (items & 7) != 0) continue;
+                int32_t maxLen = espI32(fd, items + 0x18);
+                if (maxLen < sz || maxLen > 256) continue;
+                int check = sz < 6 ? sz : 6, score = 0;
+                for (int k = 0; k < check; k++) {
+                    uint64_t pawn = espU64(fd, items + 0x20 + (uint64_t)k * 8);
+                    if (espScorePawn(fd, pawn) >= 3) score++;
+                }
+                if (check > 0 && score * 100 / check >= 60 && score > bestScore) {
+                    bestScore = score;
+                    best = base + i * 8;
+                }
+                if (bestScore >= 6) { done = true; break; }
+                if (++checked >= 4000) { done = true; break; }
+            }
+        }
+    }
+    if (best != 0) {
+        listAddr = best;
+        LOGD("esp: enemy list @%llx score=%d", (unsigned long long)best, bestScore);
+        return true;
+    }
+    LOGE("esp: no enemy list found");
+    return false;
+}
+
+bool TaizouCore::espFindMatrix(int fd, const std::vector<EspEntity>& ents, int viewW, int viewH,
+                               float outM[16], uintptr_t& outMatrixOff) const {
+    // Candidate VP matrices from libunity RW + heap (bulk scan, sanity filter).
+    std::vector<std::pair<uint64_t, uint64_t>> regions;
+    uint64_t rxS = 0, rxE = 0;
+    if (!espMapsRegions(espPid_, rxS, rxE, regions)) return false;
+    std::vector<std::pair<uint64_t, uint64_t>> heap;
+    espHeapRegions(espPid_, heap, 128ull * 1024 * 1024);
+    regions.insert(regions.end(), heap.begin(), heap.end());
+    const size_t kChunk = 512 * 1024;
+    std::vector<uint8_t> buf(kChunk + 64);
+    struct Cand { float m[16]; };
+    std::vector<Cand> cands;
+    size_t scanned = 0;
+    for (auto [rs, re] : regions) {
+        if (cands.size() >= 400 || scanned >= 192ull * 1024 * 1024) break;
+        for (uint64_t base = rs; base < re && cands.size() < 400 && scanned < 192ull * 1024 * 1024; base += kChunk) {
+            size_t len = (size_t)std::min<uint64_t>(kChunk + 64, re - base);
+            if (len < 64 || !espRead(fd, base, buf.data(), len)) { scanned += len; continue; }
+            for (size_t o = 0; o + 64 <= len && cands.size() < 400; o += 4) {
+                float m[16];
+                memcpy(m, buf.data() + o, 64);
+                bool finite = true;
+                for (int i = 0; i < 16; i++) {
+                    if (!(m[i] == m[i]) || m[i] > 1e6f || m[i] < -1e6f) { finite = false; break; }
+                }
+                if (!finite) continue;
+                float row = m[0] * m[0] + m[1] * m[1] + m[2] * m[2] + m[4] * m[4] + m[5] * m[5] + m[6] * m[6];
+                if (row < 0.01f || row > 400.0f) continue;
+                if (m[15] > 0.05f || m[15] < -0.05f) continue;
+                if (m[3] == 0 && m[7] == 0 && m[11] == 0) continue;
+                Cand c;
+                memcpy(c.m, m, 64);
+                cands.push_back(c);
+            }
+            scanned += len;
+        }
+    }
+    LOGD("esp: %d matrix candidates", (int)cands.size());
+    if (cands.empty() || ents.empty()) return false;
+    // Joint (matrix, transform-offset) search scored by anatomical projection.
+    int bestScore = 0;
+    for (auto& c : cands) {
+        for (uintptr_t toff : kEspMatrixCandidates) {
+            int score = 0;
+            for (auto& e : ents) {
+                EspVec3 rw, hw;
+                if (!espBoneWorld(fd, e.boneMesh, toff, rw)) continue;
+                if (!espBoneWorld(fd, e.boneHead, toff, hw)) continue;
+                float dx = hw.x - rw.x, dy = hw.y - rw.y, dz = hw.z - rw.z;
+                float h = sqrtf(dx * dx + dy * dy + dz * dz);
+                if (h < 0.3f || h > 3.0f) continue;
+                float hx, hy, rx, ry;
+                if (!espProject(c.m, hw, viewW, viewH, hx, hy)) continue;
+                if (!espProject(c.m, rw, viewW, viewH, rx, ry)) continue;
+                float pxH = fabsf(hy - ry);
+                if (pxH < 10 || pxH > viewH * 1.5f || hy > ry) continue;
+                score += 2;
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                memcpy(outM, c.m, 64);
+                outMatrixOff = toff;
+            }
+        }
+    }
+    LOGD("esp: matrix search best=%d", bestScore);
+    int need = (int)ents.size() >= 2 ? 2 : 1;
+    return bestScore >= need * 2 && bestScore * 2 >= (int)ents.size();
+}
+
 std::string TaizouCore::resolveBinaryPath(const std::string& binary_name) {
     if (binary_name.find('/') != std::string::npos) return binary_name;
     if (!files_dir_.empty()) return files_dir_ + "/Res/" + binary_name;
@@ -788,4 +1091,278 @@ Java_com_taizou_paid_TaizouNative_isLibraryLoaded(JNIEnv* env, jobject thiz, jin
 extern "C" JNIEXPORT void JNICALL
 Java_com_taizou_paid_TaizouNative_clearLogs(JNIEnv* env, jobject thiz) {
     if (taizou::g_instance) taizou::g_instance->clearLogs();
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_taizou_paid_TaizouNative_pollEsp(JNIEnv* env, jobject thiz, jint viewW, jint viewH) {
+    if (!taizou::g_instance) return 0;
+    return taizou::g_instance->pollEsp((int)viewW, (int)viewH);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_taizou_paid_TaizouNative_getEspEntry(JNIEnv* env, jobject thiz, jint index, jfloatArray out) {
+    if (!taizou::g_instance || out == nullptr) return JNI_FALSE;
+    if (env->GetArrayLength(out) < 12) return JNI_FALSE;
+    float buf[12];
+    if (!taizou::g_instance->espEntry((int)index, buf)) return JNI_FALSE;
+    env->SetFloatArrayRegion(out, 0, 12, buf);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_taizou_paid_TaizouNative_getEspName(JNIEnv* env, jobject thiz, jint index) {
+    std::string s = taizou::g_instance ? taizou::g_instance->espName((int)index) : std::string();
+    return env->NewStringUTF(s.c_str());
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_taizou_paid_TaizouNative_getEspBones(JNIEnv* env, jobject thiz, jint index, jfloatArray out) {
+    if (!taizou::g_instance || out == nullptr) return JNI_FALSE;
+    if (env->GetArrayLength(out) < 48) return JNI_FALSE;
+    float buf[48];
+    if (!taizou::g_instance->espBones((int)index, buf)) return JNI_FALSE;
+    env->SetFloatArrayRegion(out, 0, 48, buf);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_taizou_paid_TaizouNative_getEspTotals(JNIEnv* env, jobject thiz) {
+    jintArray arr = env->NewIntArray(2);
+    if (arr == nullptr) return nullptr;
+    jint vals[2] = {0, 0};
+    if (taizou::g_instance) {
+        vals[0] = taizou::g_instance->espTotalEnemies();
+        vals[1] = taizou::g_instance->espTotalBots();
+    }
+    env->SetIntArrayRegion(arr, 0, 2, vals);
+    return arr;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_taizou_paid_TaizouNative_setEspMatchGame(JNIEnv* env, jobject thiz, jlong addr) {
+    if (taizou::g_instance) taizou::g_instance->setEspMatchGame((uint64_t)addr);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_taizou_paid_TaizouNative_setEspMatrix(JNIEnv* env, jobject thiz, jfloatArray values) {
+    if (!taizou::g_instance || values == nullptr) return JNI_FALSE;
+    if (env->GetArrayLength(values) < 16) return JNI_FALSE;
+    float m[16];
+    env->GetFloatArrayRegion(values, 0, 16, m);
+    return taizou::g_instance->setEspMatrix(m) ? JNI_TRUE : JNI_FALSE;
+}
+
+bool TaizouCore::espReadList(int fd, uint64_t listAddr, std::vector<uint64_t>& pawns) const {
+    pawns.clear();
+    if (listAddr == 0) return false;
+    int32_t sz = espI32(fd, listAddr + 0x18);
+    if (sz < 1 || sz > kEspMaxEntities) return false;
+    uint64_t items = espU64(fd, listAddr + 0x10);
+    if (items == 0) return false;
+    for (int i = 0; i < sz; i++) {
+        pawns.push_back(espU64(fd, items + 0x20 + (uint64_t)i * 8));
+    }
+    return true;
+}
+
+int TaizouCore::pollEsp(int viewW, int viewH) {
+    espFrame_.clear();
+    espTotalEnemies_ = 0;
+    espTotalBots_ = 0;
+    if (viewW <= 0 || viewH <= 0) return 0;
+    int pid = findProcessId("com.garena.game.codm");
+    if (pid <= 0) return 0;
+    if (pid != espPid_) {
+        espPid_ = pid;
+        espListAddr_ = 0;
+        if (!espMatrixOverride_) espHasMatrix_ = false;
+    }
+    std::string memPath = "/proc/" + std::to_string(pid) + "/mem";
+    int fd = open(memPath.c_str(), O_RDONLY);
+    if (fd < 0) {
+        LOGE("esp: cannot open mem");
+        return 0;
+    }
+
+    uint64_t listAddr = 0;
+    if (espMatchGameOverride_ != 0) {
+        uint64_t cand = espU64(fd, espMatchGameOverride_ + 0x178);
+        std::vector<uint64_t> tmp;
+        // Validate before trusting the override.
+        int32_t sz = espI32(fd, cand + 0x18);
+        if (sz >= 1 && sz <= kEspMaxEntities) listAddr = cand;
+        else LOGE("esp: matchGame override invalid");
+    }
+    if (listAddr == 0 && espListAddr_ != 0) {
+        std::vector<uint64_t> tmp;
+        if (espReadList(fd, espListAddr_, tmp) && !tmp.empty()) listAddr = espListAddr_;
+        else espListAddr_ = 0;
+    }
+    if (listAddr == 0) {
+        uint64_t rxS = 0, rxE = 0;
+        std::vector<std::pair<uint64_t, uint64_t>> rw;
+        if (espMapsRegions(pid, rxS, rxE, rw) && espFindList(fd, rxS, rxE, listAddr)) {
+            espListAddr_ = listAddr;
+        }
+    }
+    if (listAddr == 0) {
+        LOGE("esp: no entity list");
+        close(fd);
+        return 0;
+    }
+
+    std::vector<uint64_t> pawns;
+    if (!espReadList(fd, listAddr, pawns)) {
+        espListAddr_ = 0;
+        close(fd);
+        return 0;
+    }
+
+    // Snapshot pointer-level data (no projection needed for these).
+    std::vector<EspEntity> ents;
+    for (uint64_t pawn : pawns) {
+        if (pawn == 0 || (int)ents.size() >= kEspMaxEntities) continue;
+        if (espScorePawn(fd, pawn) < 2) continue;
+        EspEntity e;
+        e.pawn = pawn;
+        e.valid = true;
+        uint8_t alive = 0, bot = 0;
+        espRead(fd, pawn + kEspAlive, &alive, 1);
+        espRead(fd, pawn + kEspBot, &bot, 1);
+        e.alive = alive != 0;
+        e.isBot = bot != 0;
+        if (!e.alive) continue;
+        e.boneMesh = espU64(fd, pawn + kEspMesh);
+        e.boneHead = espU64(fd, pawn + kEspHeadBone);
+        uint64_t info = espU64(fd, pawn + kEspPlayerInfo);
+        if (info != 0) {
+            e.curHP = (float)(int)espF32(fd, info + kEspCurHP);
+            e.maxHP = (float)(int)espF32(fd, info + kEspMaxHP);
+            if (!(e.maxHP > 0)) e.maxHP = 100.0f;
+        }
+        if (!espReadName(fd, pawn, e.isBot, e.name)) {
+            strncpy(e.name, e.isBot ? "BOT" : "Enemy", sizeof(e.name));
+        }
+        ents.push_back(e);
+    }
+
+    // Geometry: reuse cached matrix, else joint (matrix, transform) discovery.
+    if (!espHasMatrix_ && !ents.empty()) {
+        float m[16];
+        uintptr_t toff = 0;
+        if (espFindMatrix(fd, ents, viewW, viewH, m, toff)) {
+            memcpy(espVP_, m, sizeof(espVP_));
+            espMatrixOff_ = toff;
+            espHasMatrix_ = true;
+            LOGD("esp: geometry resolved (matrixOff=0x%x)", (unsigned)toff);
+        } else {
+            LOGE("esp: geometry unresolved (no matrix/transform validated)");
+        }
+    }
+    if (espHasMatrix_) {
+        for (auto& e : ents) {
+            if (!espBoneWorld(fd, e.boneMesh, espMatrixOff_, e.rootW)) continue;
+            if (!espBoneWorld(fd, e.boneHead, espMatrixOff_, e.headW)) continue;
+            float dx = e.headW.x - e.rootW.x, dy = e.headW.y - e.rootW.y, dz = e.headW.z - e.rootW.z;
+            float h = sqrtf(dx * dx + dy * dy + dz * dz);
+            if (h < 0.3f || h > 3.0f) continue;
+            float hx, hy, rx, ry;
+            if (!espProject(espVP_, e.headW, viewW, viewH, hx, hy)) continue;
+            if (!espProject(espVP_, e.rootW, viewW, viewH, rx, ry)) continue;
+            float pxH = fabsf(hy - ry);
+            if (pxH < 10 || pxH > viewH * 1.5f || hy > ry) continue;
+            e.headSX = hx; e.headSY = hy; e.rootSX = rx; e.rootSY = ry;
+            e.boxH = pxH; e.boxW = pxH * 0.65f;
+            // Camera-depth distance proxy (no local pawn externally).
+            e.dist = espVP_[3] * e.rootW.x + espVP_[7] * e.rootW.y + espVP_[11] * e.rootW.z + espVP_[15];
+            if (!(e.dist >= 0)) e.dist = 0;
+            e.projected = true;
+            // Skeleton bones.
+            uint64_t boneMap = espU64(fd, e.pawn + kEspBoneMap);
+            if (boneMap != 0) {
+                uint64_t table = espU64(fd, boneMap + kEspBoneTable);
+                if (table != 0) {
+                    for (int b = 0; b < 16; b++) {
+                        uint64_t node = espU64(fd, table + kEspBoneSlots[b]);
+                        if (node == 0) continue;
+                        uint64_t tr = espU64(fd, node + kEspBoneNode);
+                        EspVec3 w;
+                        if (!espBoneWorld(fd, tr, espMatrixOff_, w)) continue;
+                        float sx, sy;
+                        if (!espProject(espVP_, w, viewW, viewH, sx, sy)) continue;
+                        e.bones[b][0] = sx;
+                        e.bones[b][1] = sy;
+                        e.bones[b][2] = 1.0f;
+                    }
+                }
+            }
+        }
+    }
+
+    espFrame_.clear();
+    espTotalEnemies_ = 0;
+    espTotalBots_ = 0;
+    for (auto& e : ents) {
+        espFrame_.push_back(e);
+        if (e.isBot) espTotalBots_++;
+        else espTotalEnemies_++;
+    }
+    LOGD("esp: frame entities=%d bots=%d projected=%s", (int)espFrame_.size(),
+         espTotalBots_, espHasMatrix_ ? "yes" : "no");
+    close(fd);
+    return (int)espFrame_.size();
+}
+
+bool TaizouCore::setEspMatrix(const float* m) {
+    if (m == nullptr) return false;
+    memcpy(espVP_, m, sizeof(espVP_));
+    espHasMatrix_ = true;
+    espMatrixOverride_ = true;
+    return true;
+}
+
+void TaizouCore::setEspMatchGame(uint64_t addr) {
+    espMatchGameOverride_ = addr;
+    espListAddr_ = 0;  // re-validate through the override
+}
+
+int TaizouCore::espEntryCount() const {
+    return (int)espFrame_.size();
+}
+
+bool TaizouCore::espEntry(int index, float* out12) const {
+    if (index < 0 || index >= (int)espFrame_.size() || out12 == nullptr) return false;
+    const EspEntity& e = espFrame_[(size_t)index];
+    out12[0] = e.headSX; out12[1] = e.headSY;
+    out12[2] = e.rootSX; out12[3] = e.rootSY;
+    out12[4] = e.boxW; out12[5] = e.boxH;
+    out12[6] = e.dist; out12[7] = e.curHP; out12[8] = e.maxHP;
+    out12[9] = e.isBot ? 1.0f : 0.0f;
+    out12[10] = e.projected ? 1.0f : 0.0f;
+    out12[11] = e.alive ? 1.0f : 0.0f;
+    return true;
+}
+
+std::string TaizouCore::espName(int index) const {
+    if (index < 0 || index >= (int)espFrame_.size()) return {};
+    return std::string(espFrame_[(size_t)index].name);
+}
+
+bool TaizouCore::espBones(int index, float* out48) const {
+    if (index < 0 || index >= (int)espFrame_.size() || out48 == nullptr) return false;
+    const EspEntity& e = espFrame_[(size_t)index];
+    for (int i = 0; i < 16; i++) {
+        out48[i * 3] = e.bones[i][0];
+        out48[i * 3 + 1] = e.bones[i][1];
+        out48[i * 3 + 2] = e.bones[i][2];
+    }
+    return true;
+}
+
+int TaizouCore::espTotalEnemies() const {
+    return espTotalEnemies_;
+}
+
+int TaizouCore::espTotalBots() const {
+    return espTotalBots_;
 }

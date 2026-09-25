@@ -79,6 +79,14 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     // returning from the system overlay-permission screen.
     private var startRequested = false
 
+    // External ESP layer (full-screen overlay window + poll thread).
+    private var espView: EspOverlayView? = null
+    private var espParams: WindowManager.LayoutParams? = null
+    private var espThread: Thread? = null
+    private var espRunning = false
+    private var espHintShown = false
+    private val espFlags = mutableSetOf<String>()
+
     // Touch handling for overlay
     private var initialTouchX = 0f
     private var initialTouchY = 0f
@@ -161,6 +169,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
 
         // Setup overlay (floating cheat menu)
         setupOverlay()
+        setupEspOverlay()
 
         // Welcome toast and TTS
         showCustomToast("Welcome to Taizou CODM GR")
@@ -345,7 +354,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             this@MainActivity.pg = pg
             pageAdapter = PageAdapter(this@MainActivity)
             pg?.adapter = pageAdapter
-            pg?.offscreenPageLimit = 5
+            pg?.offscreenPageLimit = 6
 
             // Setup clock animation
             setupClockAnimation()
@@ -395,6 +404,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 initializeSeekBars()
                 initializeRadioButtons()
                 initializeSettingsButtons()
+                initializeEspToggles()
             }
             initializeRadioButtons()
         }
@@ -447,6 +457,11 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 // Features must be visible immediately on START, not hidden
                 // behind the collapsed cheat menu.
                 if (!cheatMenuExpanded) toggleCheatMenu()
+                showEspWindow()
+                if (!espHintShown) {
+                    espHintShown = true
+                    Toast.makeText(this, "Swipe menu for the ESP page", Toast.LENGTH_LONG).show()
+                }
                 showCustomToast("IMGUI Restored")
                 speakText("IMGUI Restored")
             } else {
@@ -464,9 +479,142 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 Log.e("Overlay", "Failed to remove overlay view", e)
             }
             overlayShown = false
+            hideEspWindow()
             overlayBinding?.floatingEyeIcon?.visibility = View.VISIBLE
             showCustomToast("IMGUI Hidden")
             speakText("IMGUI Hidden")
+        }
+    }
+
+    // ---- External ESP layer: full-screen, touch-transparent window ----
+    private fun setupEspOverlay() {
+        espParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+            },
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            android.graphics.PixelFormat.TRANSLUCENT
+        )
+        espView = EspOverlayView(this)
+    }
+
+    private fun showEspWindow() {
+        try {
+            if (espView?.parent == null) {
+                overlayWindowManager?.addView(espView, espParams)
+            }
+        } catch (e: Exception) {
+            Log.e("Overlay", "Failed to add ESP view", e)
+        }
+        startEspLoop()
+    }
+
+    private fun hideEspWindow() {
+        stopEspLoop()
+        espView?.let { v ->
+            try {
+                if (v.parent != null) overlayWindowManager?.removeView(v)
+            } catch (e: Exception) {
+                Log.e("Overlay", "Failed to remove ESP view", e)
+            }
+        }
+        espView?.clearFrame()
+    }
+
+    private fun startEspLoop() {
+        if (espThread?.isAlive == true) return
+        espRunning = true
+        espThread = Thread {
+            val out12 = FloatArray(12)
+            val outBones = FloatArray(48)
+            while (espRunning) {
+                try {
+                    val v = espView
+                    val w = v?.width ?: 0
+                    val h = v?.height ?: 0
+                    if (w > 0 && h > 0) {
+                        val n = try {
+                            TaizouNative.pollEsp(w, h)
+                        } catch (e: Exception) {
+                            Log.e("Overlay", "ESP poll failed", e)
+                            0
+                        }
+                        val totals = try {
+                            TaizouNative.getEspTotals()
+                        } catch (e: Exception) {
+                            intArrayOf(0, 0)
+                        }
+                        val list = ArrayList<EspOverlayView.Item>(n.coerceAtLeast(0))
+                        for (i in 0 until n) {
+                            if (!TaizouNative.getEspEntry(i, out12)) continue
+                            val bones = ArrayList<EspOverlayView.Bone>(16)
+                            if (TaizouNative.getEspBones(i, outBones)) {
+                                for (b in 0 until 16) {
+                                    bones.add(
+                                        EspOverlayView.Bone(
+                                            outBones[b * 3], outBones[b * 3 + 1],
+                                            outBones[b * 3 + 2] != 0f
+                                        )
+                                    )
+                                }
+                            }
+                            list.add(
+                                EspOverlayView.Item(
+                                    out12[0], out12[1], out12[2], out12[3],
+                                    out12[4], out12[5], out12[6], out12[7], out12[8],
+                                    out12[9] != 0f, TaizouNative.getEspName(i), bones
+                                )
+                            )
+                        }
+                        val enemies = if (totals.size >= 2) totals[0] else 0
+                        val bots = if (totals.size >= 2) totals[1] else 0
+                        val flags = espFlags.toSet()
+                        runOnUiThread {
+                            espView?.enabled = flags
+                            espView?.setFrame(list, enemies, bots)
+                        }
+                    }
+                } catch (e: InterruptedException) {
+                    break
+                } catch (e: Exception) {
+                    Log.e("Overlay", "ESP loop failed", e)
+                }
+                try {
+                    Thread.sleep(50)
+                } catch (e: InterruptedException) {
+                    break
+                }
+            }
+        }.apply { start() }
+    }
+
+    private fun stopEspLoop() {
+        espRunning = false
+        espThread?.interrupt()
+        espThread = null
+    }
+
+    private val espToggleIds = listOf(
+        R.id.esp_line, R.id.esp_box, R.id.esp_skeleton, R.id.esp_health,
+        R.id.esp_name, R.id.esp_distance, R.id.esp_count
+    )
+
+    private fun initializeEspToggles(root: View? = pg) {
+        val pager = root ?: return
+        for (id in espToggleIds) {
+            val key = try {
+                resources.getResourceEntryName(id)
+            } catch (e: Exception) {
+                null
+            } ?: continue
+            (pager.findViewById<View>(id) as? CompoundButton)?.setOnCheckedChangeListener { _, checked ->
+                if (checked) espFlags.add(key) else espFlags.remove(key)
+            }
         }
     }
 
@@ -734,6 +882,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         initializeSeekBars(page)
         initializeRadioButtons(page)
         initializeSettingsButtons(page)
+        initializeEspToggles(page)
     }
 
     private fun getCheckboxName(cb: CompoundButton): String? {
@@ -1029,6 +1178,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
     fun onAppDestroy() {
         ecgRunning = false
+        stopEspLoop()
+        hideEspWindow()
         ecgTimer?.interrupt()
         clockHandler.removeCallbacksAndMessages(null)
         tts.shutdown()

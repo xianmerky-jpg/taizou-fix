@@ -74,6 +74,28 @@ object TaizouNative {
     @Suppress("UNUSED_PARAMETER")
     external fun clearLogs()
 
+    // ---- External ESP bridge (reads only) ----
+    @Suppress("UNUSED_PARAMETER")
+    external fun pollEsp(viewWidth: Int, viewHeight: Int): Int
+
+    @Suppress("UNUSED_PARAMETER")
+    external fun getEspEntry(index: Int, out: FloatArray): Boolean
+
+    @Suppress("UNUSED_PARAMETER")
+    external fun getEspName(index: Int): String
+
+    @Suppress("UNUSED_PARAMETER")
+    external fun getEspBones(index: Int, out: FloatArray): Boolean
+
+    @Suppress("UNUSED_PARAMETER")
+    external fun getEspTotals(): IntArray
+
+    @Suppress("UNUSED_PARAMETER")
+    external fun setEspMatchGame(address: Long)
+
+    @Suppress("UNUSED_PARAMETER")
+    external fun setEspMatrix(values: FloatArray): Boolean
+
     init {
         System.loadLibrary("taizou_core")
     }
