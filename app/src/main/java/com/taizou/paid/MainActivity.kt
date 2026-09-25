@@ -962,7 +962,10 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     }
 
     override fun onCheckBoxChanged(name: String, checked: Boolean) {
-        // Update UI if needed
+        // clogs is momentary: run once, then flip back off like the original.
+        if (name == "clogs" && checked) {
+            pg?.findViewById<CompoundButton>(R.id.clogs)?.isChecked = false
+        }
     }
 
     override fun onSeekBarChanged(name: String, progress: Int) {

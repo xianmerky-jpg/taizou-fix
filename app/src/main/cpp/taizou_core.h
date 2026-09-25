@@ -26,6 +26,9 @@ struct SeekBarConfig {
     uintptr_t offset4 = 0;
     uintptr_t offset5 = 0;
     uintptr_t offset6 = 0;
+    uintptr_t offset7 = 0;
+    uintptr_t offset8 = 0;
+    uintptr_t offset9 = 0;
 };
 
 struct CheckBoxConfig {
@@ -56,9 +59,9 @@ public:
     void requestOverlayPermission(JNIEnv* env, jobject activity);
 
     int findProcessId(const std::string& package_name);
-    uintptr_t getLibraryBaseAddress(int pid, const std::string& lib_name);
+    uintptr_t getLibraryBaseAddress(int pid, const std::string& lib_name, bool executableOnly = false);
 
-    bool applyMemoryPatch(int pid, const MemoryPatch& patch);
+    bool applyMemoryPatch(int pid, const MemoryPatch& patch, bool executableOnly = false);
     bool applyMemoryPatch(const std::string& lib_name, uintptr_t offset, const std::vector<uint8_t>& bytes);
     std::vector<uint8_t> hexStringToBytes(const std::string& hex);
 
@@ -75,6 +78,9 @@ public:
     // Original AndLua auto-bypass: 18 libanogs.so patches applied once the
     // game + library are detected (see applyAutoBypass in taizou_core.cpp).
     bool applyAutoBypass();
+
+    // Original clogs cache-clean list (best-effort file deletes).
+    void clearLogs();
 
     void speakText(const std::string& text);
     void showToast(const std::string& message);
@@ -153,5 +159,8 @@ Java_com_taizou_paid_TaizouNative_applyAutoBypass(JNIEnv* env, jobject thiz);
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_taizou_paid_TaizouNative_isLibraryLoaded(JNIEnv* env, jobject thiz, jint pid, jstring libName);
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_taizou_paid_TaizouNative_clearLogs(JNIEnv* env, jobject thiz);
 
 #endif // TAIZOU_CORE_H

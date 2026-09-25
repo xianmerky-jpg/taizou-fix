@@ -71,6 +71,9 @@ object TaizouNative {
     @Suppress("UNUSED_PARAMETER")
     external fun isLibraryLoaded(pid: Int, libName: String): Boolean
 
+    @Suppress("UNUSED_PARAMETER")
+    external fun clearLogs()
+
     init {
         System.loadLibrary("taizou_core")
     }
@@ -318,7 +321,13 @@ class TaizouController(
     }
 
     fun onCheckBoxChanged(name: String, checked: Boolean) {
-        TaizouNative.setCheckBoxState(name, checked)
+        // clogs is a momentary cache-clean action, not a memory patch
+        // (mirrors the original, which also unchecked it afterwards).
+        if (name == "clogs") {
+            if (checked) TaizouNative.clearLogs()
+        } else {
+            TaizouNative.setCheckBoxState(name, checked)
+        }
         listener.onCheckBoxChanged(name, checked)
         speakFeature(name, checked)
     }

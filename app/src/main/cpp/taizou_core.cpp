@@ -145,7 +145,7 @@ void TaizouCore::initializeDefaultConfigs() {
             {{"libunity.so", 0x6AAADF8, hexStringToBytes("E8 0F 1D FC")},
              {"libunity.so", 0x6AAAD8C, hexStringToBytes("E8 0F 1D FC")}}}},
         {"advance", {"advance", false,
-            {{"libunity.so", 0xC1514C0, hexStringToBytes("20 00 80 D2 C0 03 5F D6")}},
+            {{"libunity.so", 0xC1514C0, hexStringToBytes("20 00 80 52 C0 03 5F D6")}},
             {{"libunity.so", 0x5985F8C, hexStringToBytes("FF 03 02 D1 F8 5F 04 A9")}}}},
         {"spect", {"spect", false,
             {{"libunity.so", 0x904DD18, hexStringToBytes("00 10 20 1E C0 03 5F D6")},
@@ -230,7 +230,8 @@ void TaizouCore::initializeDefaultConfigs() {
         {"br_seekbar", {"br_seekbar", 0,
             0x6643848, 0x664384C, 0x6643850, 0, 0, 0}},
         {"mp_seekbar", {"mp_seekbar", 0,
-            0x6D76CB4, 0x6D76CB8, 0x6D76CBC, 0x6AA24B4, 0x6AA24B8, 0x6AA24BC}},
+            0x6D76CB4, 0x6D76CB8, 0x6D76CBC, 0x6AA24B4, 0x6AA24B8, 0x6AA24BC,
+            0x599FB2C, 0x599FB2C + 4, 0x599FB2C + 8}},
     };
 
     radiobuttons_ = {
@@ -346,23 +347,26 @@ int TaizouCore::findProcessId(const std::string& package_name) {
     return -1;
 }
 
-uintptr_t TaizouCore::getLibraryBaseAddress(int pid, const std::string& lib_name) {
+uintptr_t TaizouCore::getLibraryBaseAddress(int pid, const std::string& lib_name, bool executableOnly) {
     if (pid <= 0) return 0;
     std::string maps_path = "/proc/" + std::to_string(pid) + "/maps";
     std::ifstream maps(maps_path);
     std::string line;
     while (std::getline(maps, line)) {
-        if (line.find(lib_name) != std::string::npos && line.find("r-xp") != std::string::npos) {
-            size_t dash_pos = line.find('-');
-            if (dash_pos != std::string::npos) {
-                std::string addr_str = line.substr(0, dash_pos);
-                try {
-                    return std::stoull(addr_str, nullptr, 16);
-                } catch (...) {
-                    // A malformed /proc maps line must not abort the injector
-                    // (uncaught C++ exceptions terminate the process).
-                    continue;
-                }
+        // Cheat patches use the FIRST mapping (library load base), exactly
+        // like the original script. Only the bypass uses the executable
+        // segment base (its offsets were calibrated to it).
+        if (line.find(lib_name) == std::string::npos) continue;
+        if (executableOnly && line.find("r-xp") == std::string::npos) continue;
+        size_t dash_pos = line.find('-');
+        if (dash_pos != std::string::npos) {
+            std::string addr_str = line.substr(0, dash_pos);
+            try {
+                return std::stoull(addr_str, nullptr, 16);
+            } catch (...) {
+                // A malformed /proc maps line must not abort the injector
+                // (uncaught C++ exceptions terminate the process).
+                continue;
             }
         }
     }
@@ -403,25 +407,36 @@ std::vector<uint8_t> TaizouCore::floatToHexLE(float value) {
     };
 }
 
-bool TaizouCore::applyMemoryPatch(int pid, const MemoryPatch& patch) {
+bool TaizouCore::applyMemoryPatch(int pid, const MemoryPatch& patch, bool executableOnly) {
     if (pid <= 0) return false;
-    uintptr_t base = getLibraryBaseAddress(pid, patch.lib_name);
-    if (base == 0) return false;
+    uintptr_t base = getLibraryBaseAddress(pid, patch.lib_name, executableOnly);
+    if (base == 0) {
+        LOGE("patch: library %s not found", patch.lib_name.c_str());
+        return false;
+    }
 
     uintptr_t target_addr = base + patch.offset;
     std::string mem_path = "/proc/" + std::to_string(pid) + "/mem";
 
     int fd = open(mem_path.c_str(), O_WRONLY);
-    if (fd < 0) return false;
+    if (fd < 0) {
+        LOGE("patch: cannot open mem (root required)");
+        return false;
+    }
 
     if (lseek(fd, target_addr, SEEK_SET) == -1) {
+        LOGE("patch: seek failed");
         close(fd);
         return false;
     }
 
     ssize_t written = write(fd, patch.bytes.data(), patch.bytes.size());
     close(fd);
-    return written == static_cast<ssize_t>(patch.bytes.size());
+    if (written != static_cast<ssize_t>(patch.bytes.size())) {
+        LOGE("patch: short write");
+        return false;
+    }
+    return true;
 }
 
 bool TaizouCore::applyMemoryPatch(const std::string& lib_name, uintptr_t offset, const std::vector<uint8_t>& bytes) {
@@ -466,6 +481,9 @@ void TaizouCore::setSeekBarProgress(const std::string& name, int progress) {
     if (sb.offset4) applyMemoryPatch("libunity.so", sb.offset4, hexStringToBytes("40 00 00 1C C0 03 5F D6"));
     if (sb.offset5) applyMemoryPatch("libunity.so", sb.offset5, hexStringToBytes("C0 03 5F D6 00 00 7A 44"));
     if (sb.offset6) applyMemoryPatch("libunity.so", sb.offset6, hex_bytes);
+    if (sb.offset7) applyMemoryPatch("libunity.so", sb.offset7, hexStringToBytes("40 00 00 1C C0 03 5F D6"));
+    if (sb.offset8) applyMemoryPatch("libunity.so", sb.offset8, hexStringToBytes("C0 03 5F D6 00 00 7A 44"));
+    if (sb.offset9) applyMemoryPatch("libunity.so", sb.offset9, hex_bytes);
 }
 
 void TaizouCore::setRadioButtonState(const std::string& group, const std::string& name) {
@@ -473,7 +491,8 @@ void TaizouCore::setRadioButtonState(const std::string& group, const std::string
         if (rb.group == group) {
             rb.checked = (rb.name == name);
             if (rb.checked) {
-                executeNativeBinaryRoot(rb.lib_name, rb.code);
+                // Original cppPatch appends " 2 3 4" to the skin code.
+                executeNativeBinaryRoot(rb.lib_name, rb.code + " 2 3 4");
             }
         }
     }
@@ -500,7 +519,8 @@ bool TaizouCore::applyAutoBypass() {
         patch.lib_name = "libanogs.so";
         patch.offset = offset;
         patch.bytes = hexStringToBytes(kBypassBytes);
-        if (!applyMemoryPatch(pid, patch)) ok = false;
+        // Bypass offsets are calibrated to the executable segment base.
+        if (!applyMemoryPatch(pid, patch, true)) ok = false;
     }
     return ok;
 }
@@ -560,6 +580,38 @@ bool TaizouCore::loadConfig(const std::string& json) {
         return true;
     } catch (...) {
         return false;
+    }
+}
+
+// Ports the original clogs file-delete list (best-effort like the original
+// pcall version: entries needing unavailable access simply fail).
+void TaizouCore::clearLogs() {
+    static const char* kPaths[] = {
+        "/data/data/com.garena.game.codm/app_bugly",
+        "/data/data/com.garena.game.codm/app_crashrecord",
+        "/data/data/com.garena.game.codm/app_textures",
+        "/data/data/com.garena.game.codm/app_webview",
+        "/data/data/com.garena.game.codm/cache",
+        "/data/data/com.garena.game.codm/code_cache",
+        "/data/data/com.garena.game.codm/daabases",
+        "/data/data/com.garena.game.codm/databases",
+        "/data/data/com.garena.game.codm/files/AFRequestCache",
+        "/data/data/com.garena.game.codm/files/com.gcloudsdk.gcloud.gvoice",
+        "/data/data/com.garena.game.codm/files/facebook_ml",
+        "/data/data/com.garena.game.codm/files/itop_login.txt",
+        "/data/data/com.garena.game.codm/files/tpnlcache.data",
+        "/data/data/com.garena.game.codm/no_backup",
+        "/data/data/com.garena.game.codm/oat",
+        "/data/data/com.garena.game.codm/files/tss_tmp",
+        "/storage/emulated/0/Android/data/com.garena.game.codm/cache",
+        "/storage/emulated/0/Android/data/com.garena.game.codm/files/ChatCache",
+        "/storage/emulated/0/Android/data/com.garena.game.codm/files/TGPA",
+        "/storage/emulated/0/Android/data/com.garena.game.codm/files/VoiceCache",
+        "/storage/emulated/0/MidasOversea",
+        "/storage/emulated/0/tencent",
+    };
+    for (const char* p : kPaths) {
+        remove(p);
     }
 }
 
@@ -731,4 +783,9 @@ Java_com_taizou_paid_TaizouNative_isLibraryLoaded(JNIEnv* env, jobject thiz, jin
     bool result = taizou::g_instance->getLibraryBaseAddress((int)pid, lib) != 0;
     env->ReleaseStringUTFChars(libName, lib);
     return result ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_taizou_paid_TaizouNative_clearLogs(JNIEnv* env, jobject thiz) {
+    if (taizou::g_instance) taizou::g_instance->clearLogs();
 }
