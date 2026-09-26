@@ -781,7 +781,8 @@ bool TaizouCore::espMapsRegions(int pid, uint64_t& rxStart, uint64_t& rxEnd,
 }
 
 static bool espHeapRegions(int pid, std::vector<std::pair<uint64_t, uint64_t>>& out) {
-    std::vector<std::pair<uint64_t, uint64_t>> hot, cold;
+    struct Reg { uint64_t s, e; int tier; };
+    std::vector<Reg> regs;
     std::string path = "/proc/" + std::to_string(pid) + "/maps";
     std::ifstream maps(path);
     if (!maps.is_open()) return false;
@@ -791,33 +792,54 @@ static bool espHeapRegions(int pid, std::vector<std::pair<uint64_t, uint64_t>>& 
         size_t dash = line.find('-');
         size_t sp = line.find(' ', dash == std::string::npos ? 0 : dash);
         if (dash == std::string::npos || sp == std::string::npos) continue;
-        // Heap-capable mappings: pure anonymous, [heap], dalvik/art heaps
-        // (including ashmem-backed), LinearAlloc, memfd. Never file-backed
-        // libraries (which also contain '/' but no heap marker).
-        size_t pathPos = line.find('/', sp);
-        bool markedHeap = line.find("[heap]") != std::string::npos ||
-                          line.find("[anon:") != std::string::npos ||
-                          line.find("/dev/ashmem/") != std::string::npos ||
-                          line.find("/memfd:") != std::string::npos;
-        bool heapish = markedHeap || pathPos == std::string::npos;
-        if (!heapish) continue;
+        // Deny-list: stacks, TLS, guards, GPU blobs, vdso, library BSS.
+        // These can never hold the managed list but cost a pread each.
+        if (line.find("[stack") != std::string::npos) continue;
+        if (line.find("stack_and_tls") != std::string::npos) continue;
+        if (line.find("signal stack") != std::string::npos) continue;
+        if (line.find("Sentinel") != std::string::npos) continue;
+        if (line.find("[anon:.bss]") != std::string::npos) continue;
+        if (line.find("[vdso]") != std::string::npos || line.find("[vvar") != std::string::npos) continue;
+        if (line.find("kgsl") != std::string::npos) continue;
+        if (line.find("dmabuf") != std::string::npos) continue;
+        if (line.find("AHardwareBuffer") != std::string::npos) continue;
         uint64_t start = 0, end = 0;
         try {
             start = std::stoull(line.substr(0, dash), nullptr, 16);
             end = std::stoull(line.substr(dash + 1, sp - dash - 1), nullptr, 16);
         } catch (...) { continue; }
-        if (end <= start || end - start < 4096) continue;
-        // Managed heaps before malloc/scudo/stack arenas.
-        bool hotRegion = line.find("dalvik") != std::string::npos ||
-                         line.find("[heap]") != std::string::npos ||
+        if (end <= start || end - start < 65536) continue;  // 64KB floor
+        // Tiers (first match wins): T0 blank-anon (Boehm home), T1 native
+        // malloc, T2 ashmem/memfd, T3 dalvik/art (framework objects only).
+        size_t pathPos = line.find('/', sp);
+        int tier = 3;
+        bool dalvikish = line.find("dalvik") != std::string::npos ||
                          line.find("art") != std::string::npos ||
-                         line.find("LinearAlloc") != std::string::npos;
-        if (hotRegion) hot.emplace_back(start, end);
-        else cold.emplace_back(start, end);
+                         line.find("LinearAlloc") != std::string::npos ||
+                         line.find("jit") != std::string::npos;
+        if (dalvikish) {
+            tier = 3;
+        } else if (pathPos == std::string::npos) {
+            tier = 0;
+        } else if (line.find("scudo") != std::string::npos ||
+                   line.find("libc_malloc") != std::string::npos ||
+                   line.find("[heap]") != std::string::npos ||
+                   line.find("GWP") != std::string::npos) {
+            tier = 1;
+        } else if (line.find("ashmem") != std::string::npos ||
+                   line.find("memfd:") != std::string::npos) {
+            tier = 2;
+        } else {
+            continue;  // other file-backed mapping
+        }
+        regs.push_back({start, end, tier});
     }
+    std::sort(regs.begin(), regs.end(), [](const Reg& a, const Reg& b) {
+        if (a.tier != b.tier) return a.tier < b.tier;
+        return (a.e - a.s) > (b.e - b.s);
+    });
     out.clear();
-    out.insert(out.end(), hot.begin(), hot.end());
-    out.insert(out.end(), cold.begin(), cold.end());
+    for (auto& r : regs) out.emplace_back(r.s, r.e);
     return !out.empty();
 }
 
