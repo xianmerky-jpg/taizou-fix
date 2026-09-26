@@ -90,6 +90,18 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private val espFlags = mutableSetOf<String>()
     // CV capture mode (screen-red tracking) as an alternative data source.
     private var cvMode = false
+    private val cvTracker = CvTracker()
+    private var lastCvFrameMs: Long = 0L
+    private var cvLastW = 0
+    private var cvLastH = 0
+    private val cvWatchdog = object : Runnable {
+        override fun run() {
+            if (cvMode && android.os.SystemClock.uptimeMillis() - lastCvFrameMs > 500) {
+                espView?.clearFrame()
+            }
+            if (cvMode) clockHandler.postDelayed(this, 500)
+        }
+    }
     private lateinit var cvConsentLauncher: ActivityResultLauncher<Intent>
     private lateinit var notifPermLauncher: ActivityResultLauncher<String>
 
@@ -732,6 +744,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             }
             cvMode = true
             syncCvCheckbox()
+            lastCvFrameMs = android.os.SystemClock.uptimeMillis()
+            clockHandler.removeCallbacks(cvWatchdog)
+            clockHandler.postDelayed(cvWatchdog, 500)
             Toast.makeText(this, "CV ESP running - pick Entire screen", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Log.e("Overlay", "Failed to start capture", e)
@@ -743,6 +758,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
 
     private fun stopCvService() {
         cvMode = false
+        clockHandler.removeCallbacks(cvWatchdog)
+        cvTracker.clear()
         CvCaptureService.listener = null
         try {
             stopService(
@@ -771,19 +788,29 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             if (w <= 0 || h <= 0 || captureW <= 0 || captureH <= 0) return
             val sx = w.toFloat() / captureW
             val sy = h.toFloat() / captureH
-            val list = ArrayList<EspOverlayView.Item>(boxes.size)
-            for (b in boxes) {
+            if (captureW != cvLastW || captureH != cvLastH) {
+                cvLastW = captureW
+                cvLastH = captureH
+                cvTracker.clear()
+            }
+            lastCvFrameMs = android.os.SystemClock.uptimeMillis()
+            val tracked = cvTracker.update(boxes.map {
+                CvTracker.Box(it.x1, it.y1, it.x2, it.y2)
+            })
+            val list = ArrayList<EspOverlayView.Item>(tracked.size)
+            for (b in tracked) {
                 val x1 = b.x1 * sx
                 val y1 = b.y1 * sy
                 val x2 = b.x2 * sx
                 val y2 = b.y2 * sy
+                val cx = (x1 + x2) / 2f
                 val bw = maxOf(x2 - x1, 4f)
                 val bh = maxOf(y2 - y1, 4f)
                 // dist/name/hp unknown from pixels: layers needing them
                 // stay hidden via the view's own gates.
                 list.add(
                     EspOverlayView.Item(
-                        x1, y1, x1, y2, bw, bh, -1f, 0f, 0f,
+                        cx, y1, cx, y2, bw, bh, -1f, 0f, 0f,
                         false, true, "", emptyList()
                     )
                 )
@@ -796,6 +823,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         }
 
         override fun onStopped() {
+            cvTracker.clear()
+            clockHandler.removeCallbacks(cvWatchdog)
             runOnUiThread {
                 cvMode = false
                 syncCvCheckbox()
@@ -805,6 +834,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         }
 
         override fun onBlocked(message: String) {
+            cvTracker.clear()
+            clockHandler.removeCallbacks(cvWatchdog)
             runOnUiThread {
                 cvMode = false
                 syncCvCheckbox()

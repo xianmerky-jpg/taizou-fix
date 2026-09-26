@@ -158,8 +158,8 @@ class EspOverlayView @JvmOverloads constructor(
                 useFootY = maxY
             }
 
-            val boxH = maxOf(useFootY - useHeadY, 4f)
-            val boxW = boxH * 0.65f
+            val boxH = if (hasSkel) maxOf(useFootY - useHeadY, 4f) else it.boxH.coerceIn(4f, h)
+            val boxW = if (hasSkel) boxH * 0.65f else it.boxW.coerceIn(4f, w)
             val left = useHeadX - boxW / 2f
             val right = left + boxW
 

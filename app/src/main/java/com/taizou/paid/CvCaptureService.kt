@@ -64,7 +64,7 @@ class CvCaptureService : Service() {
     private var captureW: Int = 0
     private var captureH: Int = 0
     private var lastProcessMs: Long = 0
-    private var frameCount: Long = 0
+    private var lastProbeMs: Long = 0
     private var blackStreak: Int = 0
     private val pixelsLock = Any()
     private var pixels: IntArray = IntArray(0)
@@ -130,6 +130,11 @@ class CvCaptureService : Service() {
 
             val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             val mp = mpm.getMediaProjection(resultCode, data)
+            projection = mp
+
+            worker = HandlerThread("CvCapture", Process.THREAD_PRIORITY_DEFAULT).apply { start() }
+            workerHandler = Handler(worker!!.looper)
+
             mp.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
                     teardown()
@@ -137,10 +142,6 @@ class CvCaptureService : Service() {
                     stopSelf()
                 }
             }, workerHandler)
-            projection = mp
-
-            worker = HandlerThread("CvCapture", Process.THREAD_PRIORITY_BACKGROUND).apply { start() }
-            workerHandler = Handler(worker!!.looper)
 
             val reader = ImageReader.newInstance(captureW, captureH, PixelFormat.RGBA_8888, 3)
             reader.setOnImageAvailableListener({ r ->
@@ -176,9 +177,8 @@ class CvCaptureService : Service() {
 
     private fun processImage(image: android.media.Image) {
         val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastProcessMs < 120) return  // ~8fps throttle
+        if (now - lastProcessMs < 80) return  // ~12.5fps throttle
         lastProcessMs = now
-        frameCount++
 
         val plane = image.planes[0]
         val buf = plane.buffer
@@ -208,15 +208,15 @@ class CvCaptureService : Service() {
                     }
                 }
             }
-            val copy = pixels.clone()
-
-            // Periodic blackout probe (FLAG_SECURE would yield black frames).
-            if (frameCount % 30L == 0L) {
+            // Periodic blackout probe (FLAG_SECURE would yield black frames),
+            // wall-clock based so it survives cadence changes.
+            if (now - lastProbeMs >= 2000) {
+                lastProbeMs = now
                 var sum = 0L
                 var n = 0
                 var i = 0
-                while (i < copy.size) {
-                    val v = copy[i]
+                while (i < pixels.size) {
+                    val v = pixels[i]
                     sum += (v and 0xFF) + ((v shr 8) and 0xFF) + ((v shr 16) and 0xFF)
                     n += 3
                     i += 16
@@ -235,7 +235,7 @@ class CvCaptureService : Service() {
             }
 
             val out = try {
-                TaizouNative.detectBoxes(copy, w, h)
+                TaizouNative.detectBoxes(pixels, w, h)
             } catch (e: Exception) {
                 Log.e("CvCapture", "detect failed", e)
                 return

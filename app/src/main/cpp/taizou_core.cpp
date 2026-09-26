@@ -1209,26 +1209,32 @@ std::vector<float> taizou::TaizouCore::detectBoxes(const int32_t* pixels, int w,
     if (pixels == nullptr || w < 80 || h < 60 || w > 2000 || h > 2000) return out;
     int n = w * h;
     // Red mask: vivid reds only (wallhack shade), hue-agnostic integer test.
-    std::vector<uint8_t> mask((size_t)n, 0);
+    thread_local std::vector<uint8_t> t_mask;
+    if ((int)t_mask.size() != n) t_mask.assign((size_t)n, 0);
+    else std::fill(t_mask.begin(), t_mask.end(), 0);
+    uint8_t* mask = t_mask.data();
     long redCount = 0;
     for (int i = 0; i < n; i++) {
         int32_t v = pixels[i];
         int r = v & 0xFF, g = (v >> 8) & 0xFF, b = (v >> 16) & 0xFF;
         int mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
         int mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
-        if (mx < 115) continue;                    // V > ~0.45
+        if (mx < 100) continue;                    // V > ~0.4
         if (r <= g || r <= b) continue;            // red dominant (kills yellow/green/blue/white)
         int delta = mx - mn;
         int ab = g > b ? g - b : b - g;
-        if (ab * 5 > delta) continue;              // hue within ~12deg of pure red
-        if ((mx - mn) * 100 < mx * 65) continue;   // saturation > ~0.65
+        if (ab * 4 > delta) continue;              // hue within ~14deg of pure red
+        if ((mx - mn) * 100 < mx * 55) continue;   // saturation > ~0.55
         mask[(size_t)i] = 1;
         redCount++;
     }
-    // Fullscreen-red guard (damage vignette, red zone, menus): suppress all.
-    if (redCount > (long)n / 12) return out;
-    // Connected components (4-neighbourhood, union-find over mask pixels).
-    std::vector<int> parent((size_t)n, -1);
+    // Only a fully washed frame (>50% red) is skipped outright; partial
+    // washes are handled per-box below so close enemies still draw.
+    if (redCount > (long)n / 2) return out;
+    thread_local std::vector<int> t_parent;
+    if ((int)t_parent.size() != n) t_parent.assign((size_t)n, -1);
+    else std::fill(t_parent.begin(), t_parent.end(), -1);
+    int* parent = t_parent.data();
     std::function<int(int)> find = [&](int x) -> int {
         int r = x;
         while (parent[(size_t)r] != r) r = parent[(size_t)r];
@@ -1259,7 +1265,7 @@ std::vector<float> taizou::TaizouCore::detectBoxes(const int32_t* pixels, int w,
     boxes.reserve(64);
     // Map root -> box index.
     std::vector<int> roots;
-    roots.reserve(64);
+    roots.reserve(128);
     for (int i = 0; i < n; i++) {
         if (!mask[(size_t)i]) continue;
         int r = find(i);
@@ -1269,7 +1275,7 @@ std::vector<float> taizou::TaizouCore::detectBoxes(const int32_t* pixels, int w,
             if (roots[k] == r) break;
         }
         if (k == roots.size()) {
-            if (roots.size() >= 64) continue;
+            if (roots.size() >= 128) continue;
             roots.push_back(r);
             boxes.push_back({x, y, x, y, 0});
         }
@@ -1285,8 +1291,8 @@ std::vector<float> taizou::TaizouCore::detectBoxes(const int32_t* pixels, int w,
         for (size_t j = i + 1; j < boxes.size();) {
             Box& a = boxes[i];
             Box& b = boxes[j];
-            bool nearX = a.x1 <= b.x2 + 6 && b.x1 <= a.x2 + 6;
-            bool nearY = a.y1 <= b.y2 + 6 && b.y1 <= a.y2 + 6;
+            bool nearX = a.x1 <= b.x2 + 10 && b.x1 <= a.x2 + 10;
+            bool nearY = a.y1 <= b.y2 + 10 && b.y1 <= a.y2 + 10;
             if (nearX && nearY) {
                 if (b.x1 < a.x1) a.x1 = b.x1;
                 if (b.y1 < a.y1) a.y1 = b.y1;
@@ -1300,12 +1306,24 @@ std::vector<float> taizou::TaizouCore::detectBoxes(const int32_t* pixels, int w,
         }
     }
     int kept = 0;
+    float frameArea = (float)n;
     for (auto& b : boxes) {
         if (kept >= 64) break;
         int bw = b.x2 - b.x1 + 1, bh = b.y2 - b.y1 + 1;
-        if (b.area < 40) continue;                       // noise/hitmarkers
-        if (b.area > n / 4) continue;                    // fullscreen wash
-        if (bh < 8) continue;
+        float bboxArea = (float)bw * (float)bh;
+        float density = bboxArea > 0 ? (float)b.area / bboxArea : 0;
+        if (b.area < 24) continue;                        // noise/hitmarkers
+        if (b.area > n / 4) continue;                     // fullscreen wash
+        if (bh < 6) continue;
+        // Graduated red-storm guard: in a red wash, keep only dense small boxes.
+        if (redCount * 8 > n) {
+            if (density <= 0.4f) continue;
+            if (bboxArea >= frameArea * 0.1f) continue;
+        } else {
+            if (density <= 0.12f) continue;               // sparse merged garbage
+        }
+        float aspect = bh > 0 ? (float)bw / (float)bh : 99.0f;
+        if ((aspect > 4.0f || aspect < 0.15f) && b.area <= 400) continue;
         out.push_back((float)b.x1);
         out.push_back((float)b.y1);
         out.push_back((float)b.x2);
