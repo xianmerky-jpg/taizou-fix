@@ -556,7 +556,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         espThread = Thread {
             val out12 = FloatArray(12)
             val outBones = FloatArray(48)
-            while (espRunning) {
+            var lastShown = 0
+            try {
+                while (espRunning) {
                 try {
                     val v = espView
                     val w = v?.width ?: 0
@@ -568,9 +570,11 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                             Log.e("Overlay", "ESP poll failed", e)
                             0
                         }
+                        var totalsOk = true
                         val totals = try {
                             TaizouNative.getEspTotals()
                         } catch (e: Exception) {
+                            totalsOk = false
                             intArrayOf(0, 0)
                         }
                         val list = ArrayList<EspOverlayView.Item>(n.coerceAtLeast(0))
@@ -598,12 +602,18 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                         }
                         val enemies = if (totals.size >= 2) totals[0] else 0
                         val bots = if (totals.size >= 2) totals[1] else 0
-                        val fresh = totals.size < 3 || totals[2] != 0
+                        val fresh = totalsOk && (totals.size < 3 || totals[2] != 0)
+                        lastShown = n
                         val flags = espFlags.toSet()
                         runOnUiThread {
                             espView?.enabled = flags
                             espView?.setFrame(list, enemies, bots, fresh)
                         }
+                    } else if (lastShown > 0) {
+                        // View went to zero size: clear once instead of
+                        // freezing the last frame on screen.
+                        lastShown = 0
+                        runOnUiThread { espView?.clearFrame() }
                     }
                 } catch (e: InterruptedException) {
                     break
@@ -615,6 +625,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 } catch (e: InterruptedException) {
                     break
                 }
+            }
+            } finally {
+                runOnUiThread { espView?.clearFrame() }
             }
         }.apply { start() }
     }

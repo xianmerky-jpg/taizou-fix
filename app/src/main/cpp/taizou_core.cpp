@@ -821,8 +821,15 @@ static bool espHeapRegions(int pid, std::vector<std::pair<uint64_t, uint64_t>>& 
     return !out.empty();
 }
 
-static bool espMatrixSane(const float m[16]) {
-    for (int i = 0; i < 16; i++) {
+// Shared list-acceptance rule for scan hits, overrides and revalidation:
+// proportional bar that still admits small-but-perfect lists.
+static bool espQuorumAccept(int score, int check) {
+    if (check <= 0) return false;
+    if (check == 1) return score >= 1;
+    return score * 100 / check >= 75 && score >= 2;
+}
+
+static bool espMatrixSane(const float m[16]) {    for (int i = 0; i < 16; i++) {
         if (!(m[i] == m[i]) || m[i] > 1e6f || m[i] < -1e6f) return false;
     }
     float row = m[0] * m[0] + m[1] * m[1] + m[2] * m[2] + m[4] * m[4] + m[5] * m[5] + m[6] * m[6];
@@ -862,7 +869,7 @@ bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t&
             for (size_t i = 0; i < n; i++) {
                 int32_t sz = 0;
                 memcpy(&sz, buf.data() + i * 8 + 0x18, 4);
-                if (sz < 1 || sz > 48) continue;
+                if (sz < 1 || sz > kEspMaxEntities) continue;
                 uint64_t items = 0;
                 memcpy(&items, buf.data() + i * 8 + 0x10, 8);
                 if (items == 0 || (items & 7) != 0) continue;
@@ -1367,6 +1374,8 @@ bool TaizouCore::espReadList(int fd, uint64_t listAddr, std::vector<uint64_t>& p
     if (sz < 1 || sz > kEspMaxEntities) return false;
     uint64_t items = espU64(fd, listAddr + 0x10);
     if (items == 0) return false;
+    int32_t maxLen = espI32(fd, items + 0x18);
+    if (maxLen < sz || maxLen > 1024) return false;
     for (int i = 0; i < sz; i++) {
         pawns.push_back(espU64(fd, items + 0x20 + (uint64_t)i * 8));
     }
@@ -1393,9 +1402,14 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
         return 0;
     }
     if (pid != espPid_) {
+        // New process = new ASLR: drop everything derived from addresses.
         espPid_ = pid;
         espListAddr_ = 0;
-        if (!espMatrixOverride_) espHasMatrix_ = false;
+        espNoListCooldown_ = 0;
+        espNoMatrixCooldown_ = 0;
+        espMatrixOverride_ = false;
+        espHasMatrix_ = false;
+        espMatrixAddr_ = 0;
     }
     std::string memPath = "/proc/" + std::to_string(pid) + "/mem";
     int fd = open(memPath.c_str(), O_RDONLY);
@@ -1410,13 +1424,23 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
     if (espMatchGameOverride_ != 0) {
         uint64_t cand = espU64(fd, espMatchGameOverride_ + 0x178);
         std::vector<uint64_t> tmp;
-        // Validate the override like a scan hit (size + real pawns).
-        if (espReadList(fd, cand, tmp) && !tmp.empty() &&
-            espScorePawn(fd, tmp[0]) >= 4) {
-            listAddr = cand;
+        if (espReadList(fd, cand, tmp) && !tmp.empty()) {
+            int check = 0, score = 0;
+            for (uint64_t pawn : tmp) {
+                if (check >= 6) break;
+                check++;
+                if (espScorePawn(fd, pawn) >= 4) score++;
+            }
+            if (espQuorumAccept(score, check)) {
+                listAddr = cand;
+                espListAddr_ = cand;
+            } else {
+                LOGE("esp: matchGame override invalid");
+            }
         } else {
             LOGE("esp: matchGame override invalid");
         }
+    }
     }
     if (listAddr == 0 && espListAddr_ != 0) {
         std::vector<uint64_t> tmp;
@@ -1424,13 +1448,21 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
         // Periodic full re-validation: same-process match changes or a
         // latched garbage list would otherwise stick forever.
         if (readable && espPollCount_ % 60 == 0) {
+            // Production predicate (score + alive + identity), not just score:
+            // a dead list with intact pointers must not stick.
             int check = 0, score = 0;
             for (uint64_t pawn : tmp) {
                 if (check >= 6) break;
                 check++;
-                if (espScorePawn(fd, pawn) >= 4) score++;
+                if (espScorePawn(fd, pawn) < 4) continue;
+                uint8_t alive = 0, bot = 0;
+                if (!espRead(fd, pawn + kEspAlive, &alive, 1) || alive == 0) continue;
+                espRead(fd, pawn + kEspBot, &bot, 1);
+                char nm[48] = {0};
+                if (bot == 0 && !espReadName(fd, pawn, false, nm)) continue;
+                score++;
             }
-            if (check == 0 || score * 100 / check < 60) {
+            if (!espQuorumAccept(score, check)) {
                 LOGE("esp: cached list failed revalidation");
                 readable = false;
             }
@@ -1505,7 +1537,7 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
             memcpy(espVP_, m, sizeof(espVP_));
         }
     }
-    if (!espHasMatrix_ && !ents.empty()) {
+    if (!espHasMatrix_ && !ents.empty() && espNoMatrixCooldown_ == 0) {
         float m[16];
         uintptr_t toff = 0;
         uint64_t maddr = 0;
@@ -1517,7 +1549,10 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
             LOGD("esp: geometry resolved (matrixOff=0x%x @%llx)", (unsigned)toff, (unsigned long long)maddr);
         } else {
             LOGE("esp: geometry unresolved (no matrix/transform validated)");
+            espNoMatrixCooldown_ = 20;
         }
+    } else if (espNoMatrixCooldown_ > 0) {
+        espNoMatrixCooldown_--;
     }
     if (espHasMatrix_) {
         for (auto& e : ents) {
@@ -1569,6 +1604,18 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
         else espTotalEnemies_++;
         if (!e.projected) continue;
         espFrame_.push_back(e);
+    }
+    // No projection at all despite entities: geometry is stale, force a
+    // rediscovery instead of wedging on it forever.
+    if (!ents.empty() && espFrame_.empty()) {
+        if (++espNoProjStreak_ >= 40) {
+            LOGE("esp: projection failing, rediscovering geometry");
+            espHasMatrix_ = false;
+            espMatrixAddr_ = 0;
+            espNoProjStreak_ = 0;
+        }
+    } else {
+        espNoProjStreak_ = 0;
     }
     LOGD("esp: pawns=%d valid=%d frame=%d bots=%d matrix=%s", (int)pawns.size(),
          (int)ents.size(), (int)espFrame_.size(),

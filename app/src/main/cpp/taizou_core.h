@@ -164,6 +164,8 @@ private:
     int espPid_ = 0;
     int espPollCount_ = 0;
     int espNoListCooldown_ = 0;
+    int espNoMatrixCooldown_ = 0;
+    int espNoProjStreak_ = 0;
     // Last-run diagnostics surfaced to the UI. Mutable: written from const
     // scan helpers that must stay const for the rest of the engine.
     mutable int espDiagChecked_ = 0;
