@@ -647,8 +647,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 setCvMode(checked)
             }
         }
-    }
-        }
         // On-device ESP diagnostics readout.
         (pager.findViewById<View>(R.id.esp_diag) as? Button)?.setOnClickListener {
             try {

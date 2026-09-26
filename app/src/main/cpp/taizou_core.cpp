@@ -1203,7 +1203,7 @@ Java_com_taizou_paid_TaizouNative_getEspDiag(JNIEnv* env, jobject thiz) {
     return env->NewStringUTF(s.c_str());
 }
 
-std::vector<float> TaizouCore::detectBoxes(const int32_t* pixels, int w, int h) {
+std::vector<float> taizou::TaizouCore::detectBoxes(const int32_t* pixels, int w, int h) {
     std::vector<float> out;
     out.push_back(0.0f);  // placeholder for n
     if (pixels == nullptr || w < 80 || h < 60 || w > 2000 || h > 2000) return out;
@@ -1331,7 +1331,7 @@ Java_com_taizou_paid_TaizouNative_detectBoxes(JNIEnv* env, jobject thiz, jintArr
         env->ExceptionClear();
         return empty;
     }
-    std::vector<float> boxes = TaizouCore::detectBoxes(buf.data(), (int)w, (int)h);
+    std::vector<float> boxes = taizou::TaizouCore::detectBoxes(buf.data(), (int)w, (int)h);
     jfloatArray out = env->NewFloatArray((jsize)boxes.size());
     if (out == nullptr) return empty;
     env->SetFloatArrayRegion(out, 0, (jsize)boxes.size(), boxes.data());
