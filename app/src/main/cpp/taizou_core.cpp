@@ -1463,7 +1463,6 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
             LOGE("esp: matchGame override invalid");
         }
     }
-    }
     if (listAddr == 0 && espListAddr_ != 0) {
         std::vector<uint64_t> tmp;
         bool readable = espReadList(fd, espListAddr_, tmp) && !tmp.empty();
