@@ -641,7 +641,7 @@ constexpr uintptr_t kEspBoneSlots[16] = {
 constexpr uintptr_t kEspMatrixCandidates[] = {
     0xB0, 0xC0, 0xD0, 0xE0, 0xF0, 0x100, 0x110, 0x120
 };
-constexpr int kEspMaxEntities = 48;
+constexpr int kEspMaxEntities = 128;
 constexpr uint64_t kEspScanCap = 256ull * 1024 * 1024;
 }
 
@@ -672,18 +672,21 @@ int TaizouCore::espScorePawn(int fd, uint64_t pawn) const {
     if (pawn == 0 || (pawn & 0x7) != 0) return 0;
     int score = 0;
     uint64_t info = espU64(fd, pawn + kEspPlayerInfo);
-    if (info != 0) {
+    if (info != 0) score++;
+    // HP lives in AttackableTargetInfo (pawn+0x78), NOT in PlayerInfo:
+    // scoring PlayerInfo bytes as HP can never pass on real pawns.
+    uint64_t atk = espU64(fd, pawn + kEspAttackInfo);
+    if (atk != 0) {
         score++;
-        // Coherent HP pair: failed reads default to 0 and must NOT pass.
         float hp = 0, max = 0;
-        if (espRead(fd, info + kEspCurHP, &hp, 4) && espRead(fd, info + kEspMaxHP, &max, 4) &&
+        if (espRead(fd, atk + kEspCurHP, &hp, 4) && espRead(fd, atk + kEspMaxHP, &max, 4) &&
             max > 0 && max <= 100000.0f && hp >= 0 && hp <= max) {
             score += 2;
         }
     }
     if (espU64(fd, pawn + kEspHeadBone) != 0) score++;
     if (espU64(fd, pawn + kEspMesh) != 0) score++;
-    return score;  // max 5
+    return score;  // max 6
 }
 
 bool TaizouCore::espReadName(int fd, uint64_t pawn, bool isBot, char out[48]) const {
@@ -696,8 +699,14 @@ bool TaizouCore::espReadName(int fd, uint64_t pawn, bool isBot, char out[48]) co
     if (info == 0) return false;
     uint64_t str = espU64(fd, info + 0x158);
     if (str == 0) return false;
-    int32_t len = espI32(fd, str + 0x10);
-    if (len <= 0 || len > 40) return false;
+    int32_t len = 0;
+    if (!espRead(fd, str + 0x10, &len, 4)) return false;
+    if (len <= 0 || len > 40) {
+        // Empty/unset name on a readable string: accept as unknown.
+        strncpy(out, "?", 48);
+        out[47] = '\0';
+        return true;
+    }
     uint16_t buf[40];
     if (!espRead(fd, str + 0x14, buf, (size_t)len * 2)) return false;
     int n = len < 47 ? len : 47;
@@ -771,7 +780,7 @@ bool TaizouCore::espMapsRegions(int pid, uint64_t& rxStart, uint64_t& rxEnd,
 }
 
 static bool espHeapRegions(int pid, std::vector<std::pair<uint64_t, uint64_t>>& out, uint64_t cap) {
-    out.clear();
+    std::vector<std::pair<uint64_t, uint64_t>> hot, cold;
     std::string path = "/proc/" + std::to_string(pid) + "/maps";
     std::ifstream maps(path);
     if (!maps.is_open()) return false;
@@ -795,10 +804,19 @@ static bool espHeapRegions(int pid, std::vector<std::pair<uint64_t, uint64_t>>& 
         if (total >= cap) break;  // else (cap - total) underflows below
         uint64_t take = std::min(end - start, cap - total);
         if (take < 4096) break;
-        out.emplace_back(start, start + take);
+        // Managed heaps first: libc_malloc arenas would otherwise burn the
+        // scan budget before the GC heap is reached.
+        bool hotRegion = line.find("dalvik") != std::string::npos ||
+                         line.find("[heap]") != std::string::npos ||
+                         line.find("art") != std::string::npos;
+        if (hotRegion) hot.emplace_back(start, start + take);
+        else cold.emplace_back(start, start + take);
         total += take;
         if (total >= cap) break;
     }
+    out.clear();
+    out.insert(out.end(), hot.begin(), hot.end());
+    out.insert(out.end(), cold.begin(), cold.end());
     return !out.empty();
 }
 
@@ -842,7 +860,7 @@ bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t&
                 memcpy(&items, buf.data() + i * 8 + 0x10, 8);
                 if (items == 0 || (items & 7) != 0) continue;
                 int32_t maxLen = espI32(fd, items + 0x18);
-                if (maxLen < sz || maxLen > 256) continue;
+                if (maxLen < sz || maxLen > 1024) continue;
                 int check = sz < 6 ? sz : 6, score = 0;
                 for (int k = 0; k < check; k++) {
                     uint64_t pawn = espU64(fd, items + 0x20 + (uint64_t)k * 8);
@@ -1187,8 +1205,20 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
     espTotalEnemies_ = 0;
     espTotalBots_ = 0;
     if (viewW <= 0 || viewH <= 0) return 0;
-    int pid = findProcessId("com.garena.game.codm");
-    if (pid <= 0) return 0;
+    int pid = 0;
+    const char* pkgs[] = {
+        "com.garena.game.codm",
+        "com.activision.callofduty.shooter",
+        "com.vng.codm"
+    };
+    for (const char* pkg : pkgs) {
+        pid = findProcessId(pkg);
+        if (pid > 0) break;
+    }
+    if (pid <= 0) {
+        LOGE("esp: game not running");
+        return 0;
+    }
     if (pid != espPid_) {
         espPid_ = pid;
         espListAddr_ = 0;
@@ -1247,7 +1277,7 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
             espListAddr_ = listAddr;
             espNoListCooldown_ = 0;
         } else {
-            espNoListCooldown_ = 200;
+            espNoListCooldown_ = 40;  // ~2s at 50ms polls before rescanning
         }
     }
     if (listAddr == 0) {
@@ -1267,7 +1297,7 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
     std::vector<EspEntity> ents;
     for (uint64_t pawn : pawns) {
         if (pawn == 0 || (int)ents.size() >= kEspMaxEntities) continue;
-        if (espScorePawn(fd, pawn) < 3) continue;
+        if (espScorePawn(fd, pawn) < 4) continue;
         EspEntity e;
         e.pawn = pawn;
         e.valid = true;
@@ -1364,7 +1394,8 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
         if (e.isBot) espTotalBots_++;
         else espTotalEnemies_++;
     }
-    LOGD("esp: frame entities=%d bots=%d projected=%s", (int)espFrame_.size(),
+    LOGD("esp: pawns=%d valid=%d frame=%d bots=%d matrix=%s", (int)pawns.size(),
+         (int)ents.size(), (int)espFrame_.size(),
          espTotalBots_, espHasMatrix_ ? "yes" : "no");
     close(fd);
     return (int)espFrame_.size();
