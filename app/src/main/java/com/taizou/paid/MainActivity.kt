@@ -62,6 +62,7 @@ import com.taizou.paid.PriceDialogFragment
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -780,7 +781,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private val cvServiceListener = object : CvCaptureService.CvListener {
         override fun onBoxes(
             boxes: List<CvCaptureService.CvBox>,
-            captureW: Int, captureH: Int, fresh: Boolean
+            captureW: Int, captureH: Int, fresh: Boolean, frameMs: Long
         ) {
             val v = espView ?: return
             val w = v.width
@@ -792,13 +793,22 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 cvLastW = captureW
                 cvLastH = captureH
                 cvTracker.clear()
+                Log.i(
+                    "CvAlign",
+                    "view=${w}x${h} cap=${captureW}x${captureH} sx=$sx sy=$sy"
+                )
+                val aniso = abs(sx - sy) / max(sx, sy)
+                if (aniso > 0.02f) {
+                    Log.w("CvAlign", "anisotropic scale >2% - letterbox/inset suspected")
+                }
             }
             lastCvFrameMs = android.os.SystemClock.uptimeMillis()
             val tracked = cvTracker.update(boxes.map {
                 CvTracker.Box(it.x1, it.y1, it.x2, it.y2)
-            })
+            }, frameMs)
             val list = ArrayList<EspOverlayView.Item>(tracked.size)
-            for (b in tracked) {
+            for (t in tracked) {
+                val b = t.box
                 val x1 = b.x1 * sx
                 val y1 = b.y1 * sy
                 val x2 = b.x2 * sx
@@ -811,7 +821,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 list.add(
                     EspOverlayView.Item(
                         cx, y1, cx, y2, bw, bh, -1f, 0f, 0f,
-                        false, true, "", emptyList()
+                        false, true, "", emptyList(),
+                        t.vx * sx, t.vy * sy, t.tMs
                     )
                 )
             }

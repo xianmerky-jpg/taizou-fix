@@ -4,8 +4,10 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.View
+import kotlin.math.abs
 import kotlin.math.abs
 
 /**
@@ -35,7 +37,11 @@ class EspOverlayView @JvmOverloads constructor(
         val isBot: Boolean,
         val projected: Boolean,
         val name: String,
-        val bones: List<Bone>
+        val bones: List<Bone>,
+        // Motion prediction (CV path; 0 for the memory path which stays put).
+        val vx: Float = 0f, // display px/ms
+        val vy: Float = 0f, // display px/ms
+        val tMs: Long = 0L // track time (uptimeMillis)
     )
 
     // Skeleton joint pairs (reference order).
@@ -134,14 +140,25 @@ class EspOverlayView @JvmOverloads constructor(
 
         if ("esp_count" in enabled) drawCount(canvas, w)
 
+        val now = SystemClock.uptimeMillis()
         for (it in items) {
             if (!it.projected) continue
+            // Forward-predict to draw time: absorbs UI-queue + vsync lag.
+            // Association always uses un-predicted positions (tracker side).
+            val dt = (now - it.tMs).coerceIn(0L, 120L).toFloat()
+            val pdx = (it.vx * dt).coerceIn(-48f, 48f)
+            val pdy = (it.vy * dt).coerceIn(-48f, 48f)
+            val headX = it.headX + pdx
+            val headY = it.headY + pdy
+            val rootX = it.rootX + pdx
+            val rootY = it.rootY + pdy
             val col = if (it.isBot) Color.WHITE else Color.rgb(0, 255, 0)
 
-            // Anchor on skeleton bounds when available, else head/root.
-            var useHeadX = it.headX
-            var useHeadY = it.headY
-            var useFootY = it.rootY
+            // Anchor on skeleton bounds when available, else head/root
+            // (already forward-predicted above).
+            var useHeadX = headX
+            var useHeadY = headY
+            var useFootY = rootY
             var minY = Float.MAX_VALUE
             var maxY = -Float.MAX_VALUE
             var minX = 0f
@@ -235,6 +252,19 @@ class EspOverlayView @JvmOverloads constructor(
                     canvas.drawLine(startX, startY, endX, endY, linePaint.apply { color = col })
                 }
             }
+        }
+
+        // Movement-gated re-invalidate: keep predicting at vsync while things
+        // move, sleep when static (memory path has zero velocity: unaffected).
+        if (fresh) {
+            var moving = false
+            for (it in items) {
+                if (it.vx * it.vx + it.vy * it.vy > 0.0025f) {
+                    moving = true
+                    break
+                }
+            }
+            if (moving) postInvalidateOnAnimation()
         }
     }
 

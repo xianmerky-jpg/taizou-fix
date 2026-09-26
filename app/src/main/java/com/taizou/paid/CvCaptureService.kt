@@ -38,7 +38,7 @@ class CvCaptureService : Service() {
     data class CvBox(val x1: Float, val y1: Float, val x2: Float, val y2: Float)
 
     interface CvListener {
-        fun onBoxes(boxes: List<CvBox>, captureW: Int, captureH: Int, fresh: Boolean)
+        fun onBoxes(boxes: List<CvBox>, captureW: Int, captureH: Int, fresh: Boolean, frameMs: Long)
         fun onStopped()
         fun onBlocked(message: String)
     }
@@ -148,7 +148,8 @@ class CvCaptureService : Service() {
                 var image: android.media.Image? = null
                 try {
                     image = r.acquireLatestImage() ?: return@setOnImageAvailableListener
-                    processImage(image)
+                    val acquireMs = android.os.SystemClock.uptimeMillis()
+                    processImage(image, acquireMs)
                 } catch (e: Exception) {
                     Log.e("CvCapture", "frame failed", e)
                 } finally {
@@ -175,9 +176,9 @@ class CvCaptureService : Service() {
         }
     }
 
-    private fun processImage(image: android.media.Image) {
+    private fun processImage(image: android.media.Image, acquireMs: Long) {
         val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastProcessMs < 80) return  // ~12.5fps throttle
+        if (now - lastProcessMs < 60) return  // ~16.7fps throttle
         lastProcessMs = now
 
         val plane = image.planes[0]
@@ -249,7 +250,7 @@ class CvCaptureService : Service() {
                 boxes.add(CvBox(out[o], out[o + 1], out[o + 2], out[o + 3]))
                 o += 4
             }
-            listener?.onBoxes(boxes, w, h, true)
+            listener?.onBoxes(boxes, w, h, true, acquireMs)
         }
     }
 
