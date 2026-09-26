@@ -119,6 +119,7 @@ public:
     int espTotalEnemies() const;
     int espTotalBots() const;
     bool espHasList() const { return espListAddr_ != 0; }
+    std::string espDiag() const;
 
 private:
     void initializeDefaultConfigs();
@@ -158,6 +159,15 @@ private:
     int espPid_ = 0;
     int espPollCount_ = 0;
     int espNoListCooldown_ = 0;
+    // Last-run diagnostics surfaced to the UI.
+    int espDiagChecked_ = 0;
+    int espDiagBest_ = 0;
+    int espDiagRegions_ = 0;
+    uint64_t espDiagMB_ = 0;
+    int espDiagEnts_ = 0;
+    int espDiagProj_ = 0;
+    int espDiagPolls_ = 0;
+    bool espDiagMem_ = false;
 
     JavaVM* jvm_ = nullptr;
     jobject global_context_ = nullptr;
@@ -249,5 +259,8 @@ Java_com_taizou_paid_TaizouNative_setEspMatchGame(JNIEnv* env, jobject thiz, jlo
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_taizou_paid_TaizouNative_setEspMatrix(JNIEnv* env, jobject thiz, jfloatArray values);
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_taizou_paid_TaizouNative_getEspDiag(JNIEnv* env, jobject thiz);
 
 #endif // TAIZOU_CORE_H

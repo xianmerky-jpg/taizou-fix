@@ -96,6 +96,9 @@ object TaizouNative {
     @Suppress("UNUSED_PARAMETER")
     external fun setEspMatrix(values: FloatArray): Boolean
 
+    @Suppress("UNUSED_PARAMETER")
+    external fun getEspDiag(): String
+
     init {
         System.loadLibrary("taizou_core")
     }

@@ -845,8 +845,12 @@ bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t&
     const size_t kChunk = 1024 * 1024;
     std::vector<uint8_t> buf(kChunk + 64);
     int checked = 0;
+    int maxPawn = 0;
     bool done = false;
     size_t scanned = 0;
+    espDiagRegions_ = (int)regions.size();
+    espDiagMB_ = 0;
+    for (auto [rs, re] : regions) espDiagMB_ += (re - rs) / (1024 * 1024);
     for (auto [rs, re] : regions) {
         if (done || scanned >= kEspScanCap) break;
         for (uint64_t base = rs; base < re && !done; base += kChunk) {
@@ -866,7 +870,9 @@ bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t&
                 int check = sz < 6 ? sz : 6, score = 0;
                 for (int k = 0; k < check; k++) {
                     uint64_t pawn = espU64(fd, items + 0x20 + (uint64_t)k * 8);
-                    if (espScorePawn(fd, pawn) >= 4) score++;
+                    int ps = espScorePawn(fd, pawn);
+                    if (ps > maxPawn) maxPawn = ps;
+                    if (ps >= 4) score++;
                 }
                 // Strict bar: garbage must never win. Single real enemies
                 // still pass (one perfect pawn = 100%).
@@ -874,6 +880,8 @@ bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t&
                               (score >= 4 || (check == 1 && score == 1));
                 if (accept) {
                     listAddr = base + i * 8;
+                    espDiagChecked_ = checked;
+                    espDiagBest_ = maxPawn;
                     LOGD("esp: enemy list @%llx score=%d/%d", (unsigned long long)listAddr, score, check);
                     return true;
                 }
@@ -881,6 +889,8 @@ bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t&
             }
         }
     }
+    espDiagChecked_ = checked;
+    espDiagBest_ = maxPawn;
     LOGE("esp: no enemy list found");
     return false;
 }
@@ -1186,6 +1196,12 @@ Java_com_taizou_paid_TaizouNative_setEspMatrix(JNIEnv* env, jobject thiz, jfloat
     return taizou::g_instance->setEspMatrix(m) ? JNI_TRUE : JNI_FALSE;
 }
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_taizou_paid_TaizouNative_getEspDiag(JNIEnv* env, jobject thiz) {
+    std::string s = taizou::g_instance ? taizou::g_instance->espDiag() : std::string("native not ready");
+    return env->NewStringUTF(s.c_str());
+}
+
 // These ESP method definitions landed after the namespace close above;
 // reopen it (legal C++) so the TaizouCore:: qualifiers resolve.
 namespace taizou {
@@ -1229,6 +1245,7 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
     }
     std::string memPath = "/proc/" + std::to_string(pid) + "/mem";
     int fd = open(memPath.c_str(), O_RDONLY);
+    espDiagMem_ = fd >= 0;
     if (fd < 0) {
         LOGE("esp: cannot open mem");
         return 0;
@@ -1402,6 +1419,8 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
     LOGD("esp: pawns=%d valid=%d frame=%d bots=%d matrix=%s", (int)pawns.size(),
          (int)ents.size(), (int)espFrame_.size(),
          espTotalBots_, espHasMatrix_ ? "yes" : "no");
+    espDiagEnts_ = (int)ents.size();
+    espDiagProj_ = (int)espFrame_.size();
     close(fd);
     return (int)espFrame_.size();
 }
@@ -1458,6 +1477,21 @@ int TaizouCore::espTotalEnemies() const {
 
 int TaizouCore::espTotalBots() const {
     return espTotalBots_;
+}
+
+std::string TaizouCore::espDiag() const {
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+             "game pid: %d\nmem: %s\nheap: %d regions %llu MB\nlist: %s\n"
+             "candidates: %d bestPawn: %d/6\nentities: %d projected: %d\nmatrix: %s\npolls: %d",
+             espPid_, espDiagMem_ ? "open ok" : "OPEN FAIL",
+             espDiagRegions_, (unsigned long long)espDiagMB_,
+             espListAddr_ ? "FOUND" : "none",
+             espDiagChecked_, espDiagBest_,
+             espDiagEnts_, espDiagProj_,
+             espHasMatrix_ ? "resolved" : "none",
+             espPollCount_);
+    return std::string(buf);
 }
 
 } // namespace taizou

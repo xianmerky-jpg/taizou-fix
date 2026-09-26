@@ -630,6 +630,19 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 speakText("$label ${if (checked) "activated" else "deactivated"}")
             }
         }
+        // On-device ESP diagnostics readout.
+        (pager.findViewById<View>(R.id.esp_diag) as? Button)?.setOnClickListener {
+            try {
+                val diag = TaizouNative.getEspDiag()
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("ESP diagnostics")
+                    .setMessage(diag)
+                    .setPositiveButton("OK", null)
+                    .show()
+            } catch (e: Exception) {
+                Log.e("Overlay", "Failed to read ESP diagnostics", e)
+            }
+        }
     }
 
     private fun onMenuClick(page: Int) {
