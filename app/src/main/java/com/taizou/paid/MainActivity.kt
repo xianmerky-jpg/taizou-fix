@@ -44,8 +44,6 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.ToggleButton
 import android.widget.VideoView
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
@@ -54,7 +52,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.OnLifecycleEvent
 import androidx.viewpager.widget.ViewPager
-import android.media.projection.MediaProjectionManager
 import com.google.gson.Gson
 import com.taizou.paid.databinding.ActivityMainBinding
 import com.taizou.paid.databinding.OverlayCheatMenuBinding
@@ -83,29 +80,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     // returning from the system overlay-permission screen.
     private var startRequested = false
 
-    // External ESP layer (full-screen overlay window + poll thread).
-    private var espView: EspOverlayView? = null
-    private var espParams: WindowManager.LayoutParams? = null
-    private var espThread: Thread? = null
-    private var espRunning = false
-    private val espFlags = mutableSetOf<String>()
-    // CV capture mode (screen-red tracking) as an alternative data source.
-    private var cvMode = false
-    private val cvTracker = CvTracker()
-    private var lastCvFrameMs: Long = 0L
-    private var cvLastW = 0
-    private var cvLastH = 0
-    private val cvWatchdog = object : Runnable {
-        override fun run() {
-            if (cvMode && android.os.SystemClock.uptimeMillis() - lastCvFrameMs > 500) {
-                espView?.clearFrame()
-            }
-            if (cvMode) clockHandler.postDelayed(this, 500)
-        }
-    }
-    private lateinit var cvConsentLauncher: ActivityResultLauncher<Intent>
-    private lateinit var notifPermLauncher: ActivityResultLauncher<String>
-
     // Touch handling for overlay
     private var initialTouchX = 0f
     private var initialTouchY = 0f
@@ -127,7 +101,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private var menu4: ImageView? = null
     private var menu5: ImageView? = null
     private var menu6: ImageView? = null
-    private var menu7: ImageView? = null
 
     // Clock animation
     private val clockHandler = Handler(Looper.getMainLooper())
@@ -189,8 +162,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
 
         // Setup overlay (floating cheat menu)
         setupOverlay()
-        setupEspOverlay()
-        setupCvLaunchers()
 
         // Welcome toast and TTS
         showCustomToast("Welcome to Taizou CODM GR")
@@ -371,12 +342,11 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             this@MainActivity.menu4 = menu4
             this@MainActivity.menu5 = menu5
             this@MainActivity.menu6 = menu6
-            this@MainActivity.menu7 = menu7
 
             this@MainActivity.pg = pg
             pageAdapter = PageAdapter(this@MainActivity)
             pg?.adapter = pageAdapter
-            pg?.offscreenPageLimit = 6
+            pg?.offscreenPageLimit = 5
 
             // Setup clock animation
             setupClockAnimation()
@@ -391,7 +361,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
             menu4?.setOnClickListener { onMenuClick(3) }
             menu5?.setOnClickListener { onMenuClick(4) }
             menu6?.setOnClickListener { onMenuClick(5) }
-            menu7?.setOnClickListener { onMenuClick(6) }
 
             pg?.addOnPageChangeListener(object : ViewPager.OnPageChangeListener {
                 override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {}
@@ -427,7 +396,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 initializeSeekBars()
                 initializeRadioButtons()
                 initializeSettingsButtons()
-                initializeEspToggles()
             }
             initializeRadioButtons()
         }
@@ -480,7 +448,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 // Features must be visible immediately on START, not hidden
                 // behind the collapsed cheat menu.
                 if (!cheatMenuExpanded) toggleCheatMenu()
-                showEspWindow()
                 showCustomToast("IMGUI Restored")
                 speakText("IMGUI Restored")
             } else {
@@ -498,374 +465,9 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 Log.e("Overlay", "Failed to remove overlay view", e)
             }
             overlayShown = false
-            // NOTE: ESP boxes window stays up when the menu hides so the game
-            // stays playable with ESP on; STOP/exit and onDestroy take it down.
             overlayBinding?.floatingEyeIcon?.visibility = View.VISIBLE
             showCustomToast("IMGUI Hidden")
             speakText("IMGUI Hidden")
-        }
-    }
-
-    // ---- External ESP layer: full-screen, touch-transparent window ----
-    private fun setupEspOverlay() {
-        espParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
-            },
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            android.graphics.PixelFormat.RGBA_8888
-        )
-        espView = EspOverlayView(this)
-    }
-
-    private fun showEspWindow() {
-        try {
-            if (espView?.parent == null) {
-                overlayWindowManager?.addView(espView, espParams)
-            }
-        } catch (e: Exception) {
-            Log.e("Overlay", "Failed to add ESP view", e)
-        }
-        startEspLoop()
-    }
-
-    private fun hideEspWindow() {
-        stopEspLoop()
-        espView?.let { v ->
-            if (v.parent == null) return@let
-            try {
-                overlayWindowManager?.removeView(v)
-            } catch (e: Exception) {
-                Log.e("Overlay", "Failed to remove ESP view", e)
-            }
-        }
-        espView?.clearFrame()
-    }
-
-    private fun startEspLoop() {
-        if (espThread?.isAlive == true) return
-        espRunning = true
-        espThread = Thread {
-            val out12 = FloatArray(12)
-            val outBones = FloatArray(48)
-            var lastShown = 0
-            try {
-                while (espRunning) {
-                try {
-                    val v = espView
-                    val w = v?.width ?: 0
-                    val h = v?.height ?: 0
-                    if (w > 0 && h > 0) {
-                        val n = try {
-                            TaizouNative.pollEsp(w, h)
-                        } catch (e: Exception) {
-                            Log.e("Overlay", "ESP poll failed", e)
-                            0
-                        }
-                        var totalsOk = true
-                        val totals = try {
-                            TaizouNative.getEspTotals()
-                        } catch (e: Exception) {
-                            totalsOk = false
-                            intArrayOf(0, 0)
-                        }
-                        val list = ArrayList<EspOverlayView.Item>(n.coerceAtLeast(0))
-                        for (i in 0 until n) {
-                            if (!TaizouNative.getEspEntry(i, out12)) continue
-                            val bones = ArrayList<EspOverlayView.Bone>(16)
-                            if (TaizouNative.getEspBones(i, outBones)) {
-                                for (b in 0 until 16) {
-                                    bones.add(
-                                        EspOverlayView.Bone(
-                                            outBones[b * 3], outBones[b * 3 + 1],
-                                            outBones[b * 3 + 2] != 0f
-                                        )
-                                    )
-                                }
-                            }
-                            list.add(
-                                EspOverlayView.Item(
-                                    out12[0], out12[1], out12[2], out12[3],
-                                    out12[4], out12[5], out12[6], out12[7], out12[8],
-                                    out12[9] != 0f, out12[10] != 0f,
-                                    TaizouNative.getEspName(i), bones
-                                )
-                            )
-                        }
-                        val enemies = if (totals.size >= 2) totals[0] else 0
-                        val bots = if (totals.size >= 2) totals[1] else 0
-                        val fresh = totalsOk && (totals.size < 3 || totals[2] != 0)
-                        lastShown = n
-                        val flags = espFlags.toSet()
-                        runOnUiThread {
-                            espView?.enabled = flags
-                            espView?.setFrame(list, enemies, bots, fresh)
-                        }
-                    } else if (lastShown > 0) {
-                        // View went to zero size: clear once instead of
-                        // freezing the last frame on screen.
-                        lastShown = 0
-                        runOnUiThread { espView?.clearFrame() }
-                    }
-                } catch (e: InterruptedException) {
-                    break
-                } catch (e: Exception) {
-                    Log.e("Overlay", "ESP loop failed", e)
-                }
-                try {
-                    Thread.sleep(50)
-                } catch (e: InterruptedException) {
-                    break
-                }
-            }
-            } finally {
-                runOnUiThread { espView?.clearFrame() }
-            }
-        }.apply { start() }
-    }
-
-    private fun stopEspLoop() {
-        espRunning = false
-        espThread?.interrupt()
-        espThread = null
-    }
-
-    private val espToggleIds = listOf(
-        R.id.esp_line, R.id.esp_box, R.id.esp_skeleton, R.id.esp_health,
-        R.id.esp_name, R.id.esp_distance, R.id.esp_count
-    )
-
-    private fun initializeEspToggles(root: View? = pg) {
-        val pager = root ?: return
-        val prefs = getSharedPreferences("esp_prefs", Context.MODE_PRIVATE)
-        for (id in espToggleIds) {
-            val key = try {
-                resources.getResourceEntryName(id)
-            } catch (e: Exception) {
-                null
-            } ?: continue
-            val box = (pager.findViewById<View>(id) as? CompoundButton) ?: continue
-            // Restore persisted state before attaching the listener so it
-            // does not fire (and speak) during setup.
-            val saved = prefs.getBoolean(key, false)
-            box.isChecked = saved
-            if (saved) espFlags.add(key)
-            box.setOnCheckedChangeListener { _, checked ->
-                if (checked) espFlags.add(key) else espFlags.remove(key)
-                prefs.edit().putBoolean(key, checked).apply()
-                val label = "ESP " + key.removePrefix("esp_").replaceFirstChar { it.uppercase() }
-                speakText("$label ${if (checked) "activated" else "deactivated"}")
-            }
-        }
-        // CV capture mode is a data SOURCE switch, not a draw layer.
-        (pager.findViewById<View>(R.id.esp_cv) as? CompoundButton)?.let { box ->
-            if (box.isChecked != cvMode) box.isChecked = cvMode
-            box.setOnCheckedChangeListener { view, checked ->
-                if (!view.isPressed) return@setOnCheckedChangeListener
-                setCvMode(checked)
-            }
-        }
-        // On-device ESP diagnostics readout.
-        (pager.findViewById<View>(R.id.esp_diag) as? Button)?.setOnClickListener {
-            try {
-                val diag = TaizouNative.getEspDiag()
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("ESP diagnostics")
-                    .setMessage(diag)
-                    .setPositiveButton("OK", null)
-                    .show()
-            } catch (e: Exception) {
-                Log.e("Overlay", "Failed to read ESP diagnostics", e)
-            }
-        }
-    }
-
-    // ---- CV capture mode (wallhack-red tracking, version-independent) ----
-    private fun setupCvLaunchers() {
-        cvConsentLauncher =
-            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-                if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
-                    startCvService(result.resultCode, result.data!!)
-                } else {
-                    cvMode = false
-                    syncCvCheckbox()
-                    Toast.makeText(this, "Capture permission denied", Toast.LENGTH_SHORT).show()
-                    if (overlayShown) startEspLoop()
-                }
-            }
-        notifPermLauncher =
-            registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-                requestCvConsent()
-            }
-    }
-
-    private fun setCvMode(on: Boolean) {
-        if (on) {
-            stopEspLoop()  // CV replaces the memory poll while active
-            if (Build.VERSION.SDK_INT >= 33 &&
-                checkSelfPermission("android.permission.POST_NOTIFICATIONS") !=
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-            ) {
-                notifPermLauncher.launch("android.permission.POST_NOTIFICATIONS")
-                return
-            }
-            requestCvConsent()
-        } else {
-            stopCvService()
-            if (overlayShown) startEspLoop()
-        }
-    }
-
-    private fun requestCvConsent() {
-        try {
-            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            val intent = if (Build.VERSION.SDK_INT >= 34) {
-                mpm.createScreenCaptureIntent(
-                    android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay()
-                )
-            } else {
-                mpm.createScreenCaptureIntent()
-            }
-            cvConsentLauncher.launch(intent)
-        } catch (e: Exception) {
-            Log.e("Overlay", "Consent failed", e)
-            cvMode = false
-            syncCvCheckbox()
-            if (overlayShown) startEspLoop()
-        }
-    }
-
-    private fun startCvService(resultCode: Int, data: Intent) {
-        try {
-            CvCaptureService.listener = cvServiceListener
-            val intent = Intent(this, CvCaptureService::class.java).apply {
-                action = CvCaptureService.ACTION_START
-                putExtra(CvCaptureService.EXTRA_RESULT_CODE, resultCode)
-                putExtra(CvCaptureService.EXTRA_DATA, data)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-            cvMode = true
-            syncCvCheckbox()
-            lastCvFrameMs = android.os.SystemClock.uptimeMillis()
-            clockHandler.removeCallbacks(cvWatchdog)
-            clockHandler.postDelayed(cvWatchdog, 500)
-            Toast.makeText(this, "CV ESP running - pick Entire screen", Toast.LENGTH_LONG).show()
-        } catch (e: Exception) {
-            Log.e("Overlay", "Failed to start capture", e)
-            cvMode = false
-            syncCvCheckbox()
-            if (overlayShown) startEspLoop()
-        }
-    }
-
-    private fun stopCvService() {
-        cvMode = false
-        clockHandler.removeCallbacks(cvWatchdog)
-        cvTracker.clear()
-        CvCaptureService.listener = null
-        try {
-            stopService(
-                Intent(this, CvCaptureService::class.java).apply {
-                    action = CvCaptureService.ACTION_STOP
-                }
-            )
-        } catch (e: Exception) {
-        }
-        syncCvCheckbox()
-    }
-
-    private fun syncCvCheckbox() {
-        val box = pg?.findViewById<View>(R.id.esp_cv) as? CompoundButton
-        if (box != null && box.isChecked != cvMode) box.isChecked = cvMode
-    }
-
-    private val cvServiceListener = object : CvCaptureService.CvListener {
-        override fun onBoxes(
-            boxes: List<CvCaptureService.CvBox>,
-            captureW: Int, captureH: Int, fresh: Boolean, frameMs: Long
-        ) {
-            val v = espView ?: return
-            val w = v.width
-            val h = v.height
-            if (w <= 0 || h <= 0 || captureW <= 0 || captureH <= 0) return
-            val sx = w.toFloat() / captureW
-            val sy = h.toFloat() / captureH
-            if (captureW != cvLastW || captureH != cvLastH) {
-                cvLastW = captureW
-                cvLastH = captureH
-                cvTracker.clear()
-                Log.i(
-                    "CvAlign",
-                    "view=${w}x${h} cap=${captureW}x${captureH} sx=$sx sy=$sy"
-                )
-                val aniso = abs(sx - sy) / max(sx, sy)
-                if (aniso > 0.02f) {
-                    Log.w("CvAlign", "anisotropic scale >2% - letterbox/inset suspected")
-                }
-            }
-            lastCvFrameMs = android.os.SystemClock.uptimeMillis()
-            val tracked = cvTracker.update(boxes.map {
-                CvTracker.Box(it.x1, it.y1, it.x2, it.y2)
-            }, frameMs)
-            val list = ArrayList<EspOverlayView.Item>(tracked.size)
-            for (t in tracked) {
-                val b = t.box
-                val x1 = b.x1 * sx
-                val y1 = b.y1 * sy
-                val x2 = b.x2 * sx
-                val y2 = b.y2 * sy
-                val cx = (x1 + x2) / 2f
-                val bw = maxOf(x2 - x1, 4f)
-                val bh = maxOf(y2 - y1, 4f)
-                // dist/name/hp unknown from pixels: layers needing them
-                // stay hidden via the view's own gates.
-                list.add(
-                    EspOverlayView.Item(
-                        cx, y1, cx, y2, bw, bh, -1f, 0f, 0f,
-                        false, true, "", emptyList(),
-                        t.vx * sx, t.vy * sy, t.tMs
-                    )
-                )
-            }
-            val flags = espFlags.toSet()
-            runOnUiThread {
-                espView?.enabled = flags
-                espView?.setFrame(list, list.size, 0, fresh)
-            }
-        }
-
-        override fun onStopped() {
-            cvTracker.clear()
-            clockHandler.removeCallbacks(cvWatchdog)
-            runOnUiThread {
-                cvMode = false
-                syncCvCheckbox()
-                Toast.makeText(this@MainActivity, "Capture stopped", Toast.LENGTH_SHORT).show()
-                if (overlayShown) startEspLoop()
-            }
-        }
-
-        override fun onBlocked(message: String) {
-            cvTracker.clear()
-            clockHandler.removeCallbacks(cvWatchdog)
-            runOnUiThread {
-                cvMode = false
-                syncCvCheckbox()
-                Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-                if (overlayShown) startEspLoop()
-            }
         }
     }
 
@@ -875,7 +477,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     }
 
     private fun updateMenuButtonStyles() {
-        val menus = listOf(menu1, menu2, menu3, menu4, menu5, menu6, menu7)
+        val menus = listOf(menu1, menu2, menu3, menu4, menu5, menu6)
         menus.forEachIndexed { index, menu ->
             menu?.let {
                 val isSelected = index == currentPage
@@ -1133,7 +735,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         initializeSeekBars(page)
         initializeRadioButtons(page)
         initializeSettingsButtons(page)
-        initializeEspToggles(page)
     }
 
     private fun getCheckboxName(cb: CompoundButton): String? {
@@ -1429,9 +1030,6 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
     fun onAppDestroy() {
         ecgRunning = false
-        stopEspLoop()
-        stopCvService()
-        hideEspWindow()
         ecgTimer?.interrupt()
         clockHandler.removeCallbacksAndMessages(null)
         tts.shutdown()

@@ -20,8 +20,7 @@ class PageAdapter(private val activity: FragmentActivity) : PagerAdapter() {
         R.layout.page_adjustable,
         R.layout.page_skins,
         R.layout.page_legendary_skins,
-        R.layout.page_settings,
-        R.layout.page_esp
+        R.layout.page_settings
     )
 
     override fun getCount(): Int = pageLayouts.size
@@ -47,7 +46,6 @@ class PageAdapter(private val activity: FragmentActivity) : PagerAdapter() {
             3 -> "SKINS"
             4 -> "LEGENDARY"
             5 -> "SETTINGS"
-            6 -> "ESP"
             else -> ""
         }
     }
