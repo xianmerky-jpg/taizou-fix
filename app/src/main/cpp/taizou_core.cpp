@@ -642,7 +642,7 @@ constexpr uintptr_t kEspMatrixCandidates[] = {
     0xB0, 0xC0, 0xD0, 0xE0, 0xF0, 0x100, 0x110, 0x120
 };
 constexpr int kEspMaxEntities = 128;
-constexpr uint64_t kEspScanCap = 256ull * 1024 * 1024;
+constexpr uint64_t kEspScanCap = 512ull * 1024 * 1024;  // scan-loop byte budget
 }
 
 bool TaizouCore::espRead(int fd, uintptr_t addr, void* out, size_t len) const {
@@ -779,40 +779,40 @@ bool TaizouCore::espMapsRegions(int pid, uint64_t& rxStart, uint64_t& rxEnd,
     return rxStart != 0;
 }
 
-static bool espHeapRegions(int pid, std::vector<std::pair<uint64_t, uint64_t>>& out, uint64_t cap) {
+static bool espHeapRegions(int pid, std::vector<std::pair<uint64_t, uint64_t>>& out) {
     std::vector<std::pair<uint64_t, uint64_t>> hot, cold;
     std::string path = "/proc/" + std::to_string(pid) + "/maps";
     std::ifstream maps(path);
     if (!maps.is_open()) return false;
-    uint64_t total = 0;
     std::string line;
     while (std::getline(maps, line)) {
-        if (line.find("rw-p") == std::string::npos) continue;
+        if (line.find("rw-p") == std::string::npos && line.find("rw-s") == std::string::npos) continue;
         size_t dash = line.find('-');
         size_t sp = line.find(' ', dash == std::string::npos ? 0 : dash);
         if (dash == std::string::npos || sp == std::string::npos) continue;
-        // Heap + anonymous mappings only (no file path, no libunity).
+        // Heap-capable mappings: pure anonymous, [heap], dalvik/art heaps
+        // (including ashmem-backed), LinearAlloc, memfd. Never file-backed
+        // libraries (which also contain '/' but no heap marker).
         size_t pathPos = line.find('/', sp);
-        bool heapish = line.find("[heap]") != std::string::npos || line.find("[anon:") != std::string::npos;
-        if (pathPos != std::string::npos && !heapish) continue;
+        bool markedHeap = line.find("[heap]") != std::string::npos ||
+                          line.find("[anon:") != std::string::npos ||
+                          line.find("/dev/ashmem/") != std::string::npos ||
+                          line.find("/memfd:") != std::string::npos;
+        bool heapish = markedHeap || pathPos == std::string::npos;
+        if (!heapish) continue;
         uint64_t start = 0, end = 0;
         try {
             start = std::stoull(line.substr(0, dash), nullptr, 16);
             end = std::stoull(line.substr(dash + 1, sp - dash - 1), nullptr, 16);
         } catch (...) { continue; }
         if (end <= start || end - start < 4096) continue;
-        if (total >= cap) break;  // else (cap - total) underflows below
-        uint64_t take = std::min(end - start, cap - total);
-        if (take < 4096) break;
-        // Managed heaps first: libc_malloc arenas would otherwise burn the
-        // scan budget before the GC heap is reached.
+        // Managed heaps before malloc/scudo/stack arenas.
         bool hotRegion = line.find("dalvik") != std::string::npos ||
                          line.find("[heap]") != std::string::npos ||
-                         line.find("art") != std::string::npos;
-        if (hotRegion) hot.emplace_back(start, start + take);
-        else cold.emplace_back(start, start + take);
-        total += take;
-        if (total >= cap) break;
+                         line.find("art") != std::string::npos ||
+                         line.find("LinearAlloc") != std::string::npos;
+        if (hotRegion) hot.emplace_back(start, end);
+        else cold.emplace_back(start, end);
     }
     out.clear();
     out.insert(out.end(), hot.begin(), hot.end());
@@ -838,7 +838,7 @@ bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t&
     // Caller passes heap regions via reuse of rwRegions trick: scan heap here.
     (void)rxStart;
     (void)rxEnd;
-    if (!espHeapRegions(espPid_, regions, kEspScanCap)) {
+    if (!espHeapRegions(espPid_, regions)) {
         LOGE("esp: no heap regions");
         return false;
     }
@@ -846,11 +846,13 @@ bool TaizouCore::espFindList(int fd, uint64_t rxStart, uint64_t rxEnd, uint64_t&
     std::vector<uint8_t> buf(kChunk + 64);
     int checked = 0;
     bool done = false;
+    size_t scanned = 0;
     for (auto [rs, re] : regions) {
-        if (done) break;
+        if (done || scanned >= kEspScanCap) break;
         for (uint64_t base = rs; base < re && !done; base += kChunk) {
             size_t len = (size_t)std::min<uint64_t>(kChunk + 64, re - base);
             if (len < 64 || !espRead(fd, base, buf.data(), len)) continue;
+            scanned += len;
             size_t n = (len - 64) / 8;
             for (size_t i = 0; i < n; i++) {
                 int32_t sz = 0;
@@ -890,7 +892,7 @@ bool TaizouCore::espFindMatrix(int fd, const std::vector<EspEntity>& ents, int v
     uint64_t rxS = 0, rxE = 0;
     if (!espMapsRegions(espPid_, rxS, rxE, regions)) return false;
     std::vector<std::pair<uint64_t, uint64_t>> heap;
-    espHeapRegions(espPid_, heap, 128ull * 1024 * 1024);
+    espHeapRegions(espPid_, heap);
     regions.insert(regions.end(), heap.begin(), heap.end());
     const size_t kChunk = 512 * 1024;
     std::vector<uint8_t> buf(kChunk + 64);
@@ -1309,10 +1311,10 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
         if (!e.alive) continue;
         e.boneMesh = espU64(fd, pawn + kEspMesh);
         e.boneHead = espU64(fd, pawn + kEspHeadBone);
-        uint64_t info = espU64(fd, pawn + kEspPlayerInfo);
-        if (info != 0) {
-            e.curHP = (float)(int)espF32(fd, info + kEspCurHP);
-            e.maxHP = (float)(int)espF32(fd, info + kEspMaxHP);
+        uint64_t atk = espU64(fd, pawn + kEspAttackInfo);
+        if (atk != 0) {
+            e.curHP = (float)(int)espF32(fd, atk + kEspCurHP);
+            e.maxHP = (float)(int)espF32(fd, atk + kEspMaxHP);
             if (!(e.maxHP > 0)) e.maxHP = 100.0f;
         }
         if (!espReadName(fd, pawn, e.isBot, e.name)) continue;  // unreadable identity
