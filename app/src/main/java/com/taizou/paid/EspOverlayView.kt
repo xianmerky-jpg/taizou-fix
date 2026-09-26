@@ -6,16 +6,17 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
+import kotlin.math.abs
 
 /**
- * Full-screen transparent ESP layer. Drawn entirely with Canvas primitives,
- * following the same pattern as the clock/ECG views. Frames are pushed from
- * MainActivity (which polls the native reader on a background thread);
- * this view never touches JNI itself.
+ * Full-screen transparent ESP layer. Drawn entirely with Canvas primitives.
+ * Frames are pushed from MainActivity (which polls the native reader on a
+ * background thread); this view never touches JNI itself.
  *
- * Geometry mirrors the reference draw spec: Bottom-anchored lines, Outline
- * boxes (w = h * 0.65), name/health-top containers, distance containers,
- * 15-segment skeletons, count header. Scale = display density.
+ * Rendering mirrors the proven reference module 1:1: corner boxes sized from
+ * skeleton bounds (else head/root), side HP bar, name plate, plain distance
+ * text, Top-anchored lines, 15-segment skeletons + head circle, HUD count
+ * bar with fresh/stale states. Player green, bot white. Raw px metrics.
  */
 class EspOverlayView @JvmOverloads constructor(
     context: Context,
@@ -49,27 +50,61 @@ class EspOverlayView @JvmOverloads constructor(
     private var items: List<Item> = emptyList()
     private var totalEnemies: Int = 0
     private var totalBots: Int = 0
+    private var fresh: Boolean = false
 
-    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val skeletonPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2.3f
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f
+    }
+    private val hpBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(0xBB, 0, 0, 0)
+    }
+    private val hpBarPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val nameBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(0x96, 0, 0, 0)
+    }
+    private val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 14f
+        isFakeBoldText = true
+    }
+    private val distPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 12f
+    }
+    private val headCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2f
     }
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val hudBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val countPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         textAlign = Paint.Align.CENTER
+        textSize = 25f
+        isFakeBoldText = true
     }
-    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.BLACK
-        textAlign = Paint.Align.CENTER
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f
+        color = Color.argb(0xC8, 0xFF, 0xFF, 0xFF)
     }
 
-    fun setFrame(newItems: List<Item>, enemies: Int, bots: Int) {
+    fun setFrame(newItems: List<Item>, enemies: Int, bots: Int, isFresh: Boolean) {
         items = newItems
         totalEnemies = enemies
         totalBots = bots
+        fresh = isFresh
         invalidate()
     }
 
@@ -77,7 +112,18 @@ class EspOverlayView @JvmOverloads constructor(
         items = emptyList()
         totalEnemies = 0
         totalBots = 0
+        fresh = false
         invalidate()
+    }
+
+    private fun hpColor(ratio: Float): Int {
+        return if (ratio < 0.5f) {
+            val g = (255f * (ratio / 0.5f)).toInt()
+            Color.rgb(255, g, 0)
+        } else {
+            val r = (255f * (1f - (ratio - 0.5f) / 0.5f)).toInt()
+            Color.rgb(r, 255, 0)
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -85,118 +131,126 @@ class EspOverlayView @JvmOverloads constructor(
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0 || h <= 0) return
-        val s = resources.displayMetrics.density
 
         if ("esp_count" in enabled) drawCount(canvas, w)
+
         for (it in items) {
             if (!it.projected) continue
-            val col = if (it.isBot) Color.argb(180, 0, 255, 0) else Color.argb(255, 255, 0, 0)
-            if ("esp_line" in enabled) {
-                // Bottom anchor like the reference default.
-                canvas.drawLine(w / 2f, h, it.headX, it.headY, strokePaint.apply { color = col })
+            val col = if (it.isBot) Color.WHITE else Color.rgb(0, 255, 0)
+
+            // Anchor on skeleton bounds when available, else head/root.
+            var useHeadX = it.headX
+            var useHeadY = it.headY
+            var useFootY = it.rootY
+            var minY = Float.MAX_VALUE
+            var maxY = -Float.MAX_VALUE
+            var minX = 0f
+            var hasSkel = false
+            for (b in it.bones) {
+                if (!b.visible) continue
+                hasSkel = true
+                if (b.y < minY) { minY = b.y; minX = b.x }
+                if (b.y > maxY) { maxY = b.y }
             }
-            if ("esp_box" in enabled) {
-                canvas.drawRect(
-                    it.rootX - it.boxW / 2f, it.headY,
-                    it.rootX + it.boxW / 2f, it.headY + it.boxH,
-                    strokePaint.apply { color = col }
+            if (hasSkel) {
+                useHeadX = minX
+                useHeadY = minY
+                useFootY = maxY
+            }
+
+            val boxH = maxOf(useFootY - useHeadY, 4f)
+            val boxW = boxH * 0.65f
+            val left = useHeadX - boxW / 2f
+            val right = left + boxW
+
+            if ("esp_skeleton" in enabled) {
+                for ((a, b) in skeletonEdges) {
+                    if (a >= it.bones.size || b >= it.bones.size) continue
+                    val ba = it.bones[a]
+                    val bb = it.bones[b]
+                    if (!ba.visible || !bb.visible) continue
+                    canvas.drawLine(ba.x, ba.y, bb.x, bb.y, skeletonPaint.apply { color = col })
+                }
+                val rad = boxH / 9.3f
+                canvas.drawCircle(
+                    useHeadX, useHeadY - boxH * 0.085f, rad,
+                    headCirclePaint.apply { color = col }
                 )
             }
-            if ("esp_skeleton" in enabled) drawSkeleton(canvas, it, col)
-            // Name/distance/health-top share the <=60m gate. Screen coords from
-            // native are already top-left origin (no extra flip).
-            if (it.dist in 0f..60f) {
-                if ("esp_name" in enabled) drawName(canvas, it, s)
-                if ("esp_distance" in enabled) drawDistance(canvas, it, s)
-                if ("esp_health" in enabled) drawHealthTop(canvas, it, s)
+
+            if ("esp_box" in enabled) {
+                val cw = boxW / 4f
+                val ch = boxH / 4f
+                boxPaint.color = col
+                canvas.drawLine(left, useHeadY, left + cw, useHeadY, boxPaint)
+                canvas.drawLine(left, useHeadY, left, useHeadY + ch, boxPaint)
+                canvas.drawLine(right - cw, useHeadY, right, useHeadY, boxPaint)
+                canvas.drawLine(right, useHeadY, right, useHeadY + ch, boxPaint)
+                canvas.drawLine(left, useFootY, left + cw, useFootY, boxPaint)
+                canvas.drawLine(left, useFootY, left, useFootY - ch, boxPaint)
+                canvas.drawLine(right - cw, useFootY, right, useFootY, boxPaint)
+                canvas.drawLine(right, useFootY, right, useFootY - ch, boxPaint)
+            }
+
+            if ("esp_health" in enabled && it.maxHp > 0) {
+                val ratio = (it.hp / it.maxHp).coerceIn(0f, 1f)
+                val barX = left - 7f
+                val barW = 4f
+                canvas.drawRect(barX, useHeadY, barX + barW, useFootY, hpBgPaint)
+                hpBarPaint.color = hpColor(ratio)
+                val fillH = boxH * (1f - ratio)
+                canvas.drawRect(barX, useHeadY + fillH, barX + barW, useFootY, hpBarPaint)
+            }
+
+            if ("esp_name" in enabled && it.name != "") {
+                val tw = namePaint.measureText(it.name)
+                val nx = useHeadX - tw / 2f
+                val ny = useHeadY - 20f
+                canvas.drawRect(nx - 2f, ny - 14f, nx + tw + 2f, ny + 2f, nameBgPaint)
+                canvas.drawText(it.name, nx, ny, namePaint)
+            }
+
+            if ("esp_distance" in enabled) {
+                val txt = "${it.dist.toInt()}M"
+                val tw = distPaint.measureText(txt)
+                canvas.drawText(txt, useHeadX - tw / 2f, useFootY + 20f, distPaint)
+            }
+
+            if ("esp_line" in enabled) {
+                // Top style (reference default): from top-center, ending
+                // above the head (higher when the name plate is on).
+                val startX = w / 2f
+                val startY = 120f
+                var endX = useHeadX
+                var endY = useHeadY
+                val margin = 10f
+                if ("esp_name" in enabled && it.name != "") {
+                    endY = useHeadY - 40f - margin
+                } else {
+                    endY = useHeadY - margin
+                }
+                if (endX == endX && endY == endY &&
+                    abs(endX) < 15000 && abs(endY) < 15000
+                ) {
+                    canvas.drawLine(startX, startY, endX, endY, linePaint.apply { color = col })
+                }
             }
         }
-    }
-
-    private fun drawSkeleton(canvas: Canvas, it: Item, col: Int) {
-        val paint = strokePaint.apply { color = col }
-        for ((a, b) in skeletonEdges) {
-            if (a >= it.bones.size || b >= it.bones.size) continue
-            val ba = it.bones[a]
-            val bb = it.bones[b]
-            if (!ba.visible || !bb.visible) continue
-            canvas.drawLine(ba.x, ba.y, bb.x, bb.y, paint)
-        }
-    }
-
-    private fun drawName(canvas: Canvas, it: Item, s: Float) {
-        val hasHealth = "esp_health" in enabled
-        val cw = it.boxW * 1.6f * s
-        val cx = it.headX - cw / 2f
-        val cy = it.headY - 50f * s
-        val ch = 24f * s + (if (hasHealth) 10f * s else 0f)
-        canvas.drawRect(cx, cy, cx + cw, cy + ch, fillPaint.apply { color = Color.argb(120, 0, 0, 0) })
-        textPaint.textSize = 18f * s
-        canvas.drawText(it.name, cx + cw / 2f, cy + 20f * s, textPaint)
-    }
-
-    private fun drawHealthTop(canvas: Canvas, it: Item, s: Float) {
-        val cw = it.boxW * 1.6f * s
-        val cx = it.headX - cw / 2f
-        val cy = it.headY - 50f * s
-        val max = if (it.maxHp > 0) it.maxHp else 100f
-        val ratio = (it.hp / max).coerceIn(0f, 1f)
-        val pad = 5f * s
-        val barH = 7f * s
-        // Bar sits at the bottom of the name container.
-        val bx = cx + pad
-        val by = cy + 24f * s + 10f * s - barH - 2f * s
-        val bw = cw - 2f * pad
-        val r = (510f * (1f - ratio)).coerceIn(0f, 255f).toInt()
-        val g = (510f * ratio).coerceIn(0f, 255f).toInt()
-        canvas.drawRect(bx, by, bx + bw, by + barH, fillPaint.apply { color = Color.BLACK })
-        canvas.drawRect(bx, by, bx + bw * ratio, by + barH, fillPaint.apply { color = Color.rgb(r, g, 0) })
-    }
-
-    private fun drawDistance(canvas: Canvas, it: Item, s: Float) {
-        val label = "${it.dist.toInt()}m"
-        val scale = when {
-            it.dist >= 19f -> 1.3f
-            it.dist >= 17f -> 1.2f
-            it.dist >= 15f -> 1.1f
-            else -> 1.0f
-        }
-        textPaint.textSize = 15f * resources.displayMetrics.scaledDensity
-        val tw = textPaint.measureText(label)
-        val cw = tw + 8f * s
-        val cx = it.headX - cw / 2f
-        val cy = it.rootY + 8f * s
-        val ch = textPaint.textSize + 8f * s
-        canvas.drawRect(cx, cy, cx + cw, cy + ch, fillPaint.apply { color = Color.argb(120, 0, 0, 0) })
-        canvas.drawText(label, cx + cw / 2f, cy + 4f * s + textPaint.textSize, textPaint)
     }
 
     private fun drawCount(canvas: Canvas, w: Float) {
         val total = totalEnemies + totalBots
-        textPaint.textSize = 15f * resources.displayMetrics.scaledDensity
-        if (total > 0) {
-            val pLabel = "Player: $totalEnemies"
-            val bLabel = "Bot: $totalBots"
-            val pw = textPaint.measureText(pLabel)
-            val bw = textPaint.measureText(bLabel)
-            val totalW = pw + 40f + bw
-            var x = (w - totalW) / 2f
-            val y = 80f
-            drawShadowText(canvas, pLabel, x + pw / 2f, y, Color.argb(255, 255, 80, 80))
-            x += pw + 40f
-            drawShadowText(canvas, bLabel, x + bw / 2f, y, Color.argb(255, 80, 255, 80))
+        hudBgPaint.color = when {
+            !fresh -> Color.argb(0x88, 0xFF, 0, 0)
+            total == 0 -> Color.argb(0x88, 0x07, 0xC9, 0x1A)
+            else -> Color.argb(0x85, 0xFF, 0x5F, 0)
+        }
+        canvas.drawRect(w / 2f - 120f, 55f, w / 2f + 130f, 100f, hudBgPaint)
+        val info = if (!fresh || total == 0) {
+            "CLEAR"
         } else {
-            val label = "[ SAFE ]"
-            val lw = textPaint.measureText(label)
-            drawShadowText(canvas, label, (w - lw) / 2f + lw / 2f, 80f, Color.argb(255, 0, 255, 0))
+            "Bots: $totalBots | Players: $totalEnemies"
         }
-    }
-
-    private fun drawShadowText(canvas: Canvas, text: String, x: Float, y: Float, col: Int) {
-        shadowPaint.textSize = textPaint.textSize
-        for ((dx, dy) in arrayOf(-1f to -1f, 1f to -1f, -1f to 1f, 1f to 1f)) {
-            canvas.drawText(text, x + dx, y + dy, shadowPaint)
-        }
-        canvas.drawText(text, x, y, textPaint.apply { color = col })
+        canvas.drawText(info, w / 2f, 87.5f, countPaint)
     }
 }

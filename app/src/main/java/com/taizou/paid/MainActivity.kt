@@ -495,8 +495,11 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
             },
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
-            android.graphics.PixelFormat.TRANSLUCENT
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            android.graphics.PixelFormat.RGBA_8888
         )
         espView = EspOverlayView(this)
     }
@@ -573,10 +576,11 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                         }
                         val enemies = if (totals.size >= 2) totals[0] else 0
                         val bots = if (totals.size >= 2) totals[1] else 0
+                        val fresh = totals.size < 3 || totals[2] != 0
                         val flags = espFlags.toSet()
                         runOnUiThread {
                             espView?.enabled = flags
-                            espView?.setFrame(list, enemies, bots)
+                            espView?.setFrame(list, enemies, bots, fresh)
                         }
                     }
                 } catch (e: InterruptedException) {
@@ -606,14 +610,22 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
 
     private fun initializeEspToggles(root: View? = pg) {
         val pager = root ?: return
+        val prefs = getSharedPreferences("esp_prefs", Context.MODE_PRIVATE)
         for (id in espToggleIds) {
             val key = try {
                 resources.getResourceEntryName(id)
             } catch (e: Exception) {
                 null
             } ?: continue
-            (pager.findViewById<View>(id) as? CompoundButton)?.setOnCheckedChangeListener { _, checked ->
+            val box = (pager.findViewById<View>(id) as? CompoundButton) ?: continue
+            // Restore persisted state before attaching the listener so it
+            // does not fire (and speak) during setup.
+            val saved = prefs.getBoolean(key, false)
+            box.isChecked = saved
+            if (saved) espFlags.add(key)
+            box.setOnCheckedChangeListener { _, checked ->
                 if (checked) espFlags.add(key) else espFlags.remove(key)
+                prefs.edit().putBoolean(key, checked).apply()
                 val label = "ESP " + key.removePrefix("esp_").replaceFirstChar { it.uppercase() }
                 speakText("$label ${if (checked) "activated" else "deactivated"}")
             }

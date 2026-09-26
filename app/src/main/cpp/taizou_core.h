@@ -118,6 +118,7 @@ public:
     bool espBones(int index, float* out48) const;
     int espTotalEnemies() const;
     int espTotalBots() const;
+    bool espHasList() const { return espListAddr_ != 0; }
 
 private:
     void initializeDefaultConfigs();

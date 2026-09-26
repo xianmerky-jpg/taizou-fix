@@ -1160,14 +1160,15 @@ Java_com_taizou_paid_TaizouNative_getEspBones(JNIEnv* env, jobject thiz, jint in
 
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_taizou_paid_TaizouNative_getEspTotals(JNIEnv* env, jobject thiz) {
-    jintArray arr = env->NewIntArray(2);
+    jintArray arr = env->NewIntArray(3);
     if (arr == nullptr) return nullptr;
-    jint vals[2] = {0, 0};
+    jint vals[3] = {0, 0, 0};
     if (taizou::g_instance) {
         vals[0] = taizou::g_instance->espTotalEnemies();
         vals[1] = taizou::g_instance->espTotalBots();
+        vals[2] = taizou::g_instance->espHasList() ? 1 : 0;
     }
-    env->SetIntArrayRegion(arr, 0, 2, vals);
+    env->SetIntArrayRegion(arr, 0, 3, vals);
     return arr;
 }
 
@@ -1390,11 +1391,13 @@ int TaizouCore::pollEsp(int viewW, int viewH) {
     espFrame_.clear();
     espTotalEnemies_ = 0;
     espTotalBots_ = 0;
+    // Totals count every validated alive entity (like the reference HUD),
+    // while the drawable frame holds projected ones only.
     for (auto& e : ents) {
-        if (!e.projected) continue;  // count only what can actually draw
-        espFrame_.push_back(e);
         if (e.isBot) espTotalBots_++;
         else espTotalEnemies_++;
+        if (!e.projected) continue;
+        espFrame_.push_back(e);
     }
     LOGD("esp: pawns=%d valid=%d frame=%d bots=%d matrix=%s", (int)pawns.size(),
          (int)ents.size(), (int)espFrame_.size(),
