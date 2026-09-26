@@ -99,6 +99,9 @@ object TaizouNative {
     @Suppress("UNUSED_PARAMETER")
     external fun getEspDiag(): String
 
+    @Suppress("UNUSED_PARAMETER")
+    external fun detectBoxes(pixels: IntArray, width: Int, height: Int): FloatArray
+
     init {
         System.loadLibrary("taizou_core")
     }

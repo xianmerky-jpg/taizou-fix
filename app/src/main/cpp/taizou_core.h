@@ -121,6 +121,11 @@ public:
     bool espHasList() const { return espListAddr_ != 0; }
     std::string espDiag() const;
 
+    // ---- CV ESP: red-blob boxes from a downscaled RGBA frame ----
+    // pixels: w*h RGBA_8888 ints (0xAABBGGRR on little-endian).
+    // Returns [n, x1,y1,x2,y2, ...] in frame coords (n<=64).
+    static std::vector<float> detectBoxes(const int32_t* pixels, int w, int h);
+
 private:
     void initializeDefaultConfigs();
     // Bare binary names (e.g. "charss") live under files/Res/ after asset
@@ -263,5 +268,8 @@ Java_com_taizou_paid_TaizouNative_setEspMatrix(JNIEnv* env, jobject thiz, jfloat
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_taizou_paid_TaizouNative_getEspDiag(JNIEnv* env, jobject thiz);
+
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_taizou_paid_TaizouNative_detectBoxes(JNIEnv* env, jobject thiz, jintArray pixels, jint w, jint h);
 
 #endif // TAIZOU_CORE_H

@@ -44,6 +44,8 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.ToggleButton
 import android.widget.VideoView
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
@@ -52,6 +54,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.OnLifecycleEvent
 import androidx.viewpager.widget.ViewPager
+import android.media.projection.MediaProjectionManager
 import com.google.gson.Gson
 import com.taizou.paid.databinding.ActivityMainBinding
 import com.taizou.paid.databinding.OverlayCheatMenuBinding
@@ -85,6 +88,10 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     private var espThread: Thread? = null
     private var espRunning = false
     private val espFlags = mutableSetOf<String>()
+    // CV capture mode (screen-red tracking) as an alternative data source.
+    private var cvMode = false
+    private lateinit var cvConsentLauncher: ActivityResultLauncher<Intent>
+    private lateinit var notifPermLauncher: ActivityResultLauncher<String>
 
     // Touch handling for overlay
     private var initialTouchX = 0f
@@ -170,6 +177,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
         // Setup overlay (floating cheat menu)
         setupOverlay()
         setupEspOverlay()
+        setupCvLaunchers()
 
         // Welcome toast and TTS
         showCustomToast("Welcome to Taizou CODM GR")
@@ -477,7 +485,8 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 Log.e("Overlay", "Failed to remove overlay view", e)
             }
             overlayShown = false
-            hideEspWindow()
+            // NOTE: ESP boxes window stays up when the menu hides so the game
+            // stays playable with ESP on; STOP/exit and onDestroy take it down.
             overlayBinding?.floatingEyeIcon?.visibility = View.VISIBLE
             showCustomToast("IMGUI Hidden")
             speakText("IMGUI Hidden")
@@ -630,6 +639,16 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                 speakText("$label ${if (checked) "activated" else "deactivated"}")
             }
         }
+        // CV capture mode is a data SOURCE switch, not a draw layer.
+        (pager.findViewById<View>(R.id.esp_cv) as? CompoundButton)?.let { box ->
+            if (box.isChecked != cvMode) box.isChecked = cvMode
+            box.setOnCheckedChangeListener { view, checked ->
+                if (!view.isPressed) return@setOnCheckedChangeListener
+                setCvMode(checked)
+            }
+        }
+    }
+        }
         // On-device ESP diagnostics readout.
         (pager.findViewById<View>(R.id.esp_diag) as? Button)?.setOnClickListener {
             try {
@@ -641,6 +660,158 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
                     .show()
             } catch (e: Exception) {
                 Log.e("Overlay", "Failed to read ESP diagnostics", e)
+            }
+        }
+    }
+
+    // ---- CV capture mode (wallhack-red tracking, version-independent) ----
+    private fun setupCvLaunchers() {
+        cvConsentLauncher =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+                    startCvService(result.resultCode, result.data!!)
+                } else {
+                    cvMode = false
+                    syncCvCheckbox()
+                    Toast.makeText(this, "Capture permission denied", Toast.LENGTH_SHORT).show()
+                    if (overlayShown) startEspLoop()
+                }
+            }
+        notifPermLauncher =
+            registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+                requestCvConsent()
+            }
+    }
+
+    private fun setCvMode(on: Boolean) {
+        if (on) {
+            stopEspLoop()  // CV replaces the memory poll while active
+            if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission("android.permission.POST_NOTIFICATIONS") !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                notifPermLauncher.launch("android.permission.POST_NOTIFICATIONS")
+                return
+            }
+            requestCvConsent()
+        } else {
+            stopCvService()
+            if (overlayShown) startEspLoop()
+        }
+    }
+
+    private fun requestCvConsent() {
+        try {
+            val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            val intent = if (Build.VERSION.SDK_INT >= 34) {
+                mpm.createScreenCaptureIntent(
+                    android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay()
+                )
+            } else {
+                mpm.createScreenCaptureIntent()
+            }
+            cvConsentLauncher.launch(intent)
+        } catch (e: Exception) {
+            Log.e("Overlay", "Consent failed", e)
+            cvMode = false
+            syncCvCheckbox()
+            if (overlayShown) startEspLoop()
+        }
+    }
+
+    private fun startCvService(resultCode: Int, data: Intent) {
+        try {
+            CvCaptureService.listener = cvServiceListener
+            val intent = Intent(this, CvCaptureService::class.java).apply {
+                action = CvCaptureService.ACTION_START
+                putExtra(CvCaptureService.EXTRA_RESULT_CODE, resultCode)
+                putExtra(CvCaptureService.EXTRA_DATA, data)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            cvMode = true
+            syncCvCheckbox()
+            Toast.makeText(this, "CV ESP running - pick Entire screen", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Log.e("Overlay", "Failed to start capture", e)
+            cvMode = false
+            syncCvCheckbox()
+            if (overlayShown) startEspLoop()
+        }
+    }
+
+    private fun stopCvService() {
+        cvMode = false
+        CvCaptureService.listener = null
+        try {
+            stopService(
+                Intent(this, CvCaptureService::class.java).apply {
+                    action = CvCaptureService.ACTION_STOP
+                }
+            )
+        } catch (e: Exception) {
+        }
+        syncCvCheckbox()
+    }
+
+    private fun syncCvCheckbox() {
+        val box = pg?.findViewById<View>(R.id.esp_cv) as? CompoundButton
+        if (box != null && box.isChecked != cvMode) box.isChecked = cvMode
+    }
+
+    private val cvServiceListener = object : CvCaptureService.CvListener {
+        override fun onBoxes(
+            boxes: List<CvCaptureService.CvBox>,
+            captureW: Int, captureH: Int, fresh: Boolean
+        ) {
+            val v = espView ?: return
+            val w = v.width
+            val h = v.height
+            if (w <= 0 || h <= 0 || captureW <= 0 || captureH <= 0) return
+            val sx = w.toFloat() / captureW
+            val sy = h.toFloat() / captureH
+            val list = ArrayList<EspOverlayView.Item>(boxes.size)
+            for (b in boxes) {
+                val x1 = b.x1 * sx
+                val y1 = b.y1 * sy
+                val x2 = b.x2 * sx
+                val y2 = b.y2 * sy
+                val bw = maxOf(x2 - x1, 4f)
+                val bh = maxOf(y2 - y1, 4f)
+                // dist/name/hp unknown from pixels: layers needing them
+                // stay hidden via the view's own gates.
+                list.add(
+                    EspOverlayView.Item(
+                        x1, y1, x1, y2, bw, bh, -1f, 0f, 0f,
+                        false, true, "", emptyList()
+                    )
+                )
+            }
+            val flags = espFlags.toSet()
+            runOnUiThread {
+                espView?.enabled = flags
+                espView?.setFrame(list, list.size, 0, fresh)
+            }
+        }
+
+        override fun onStopped() {
+            runOnUiThread {
+                cvMode = false
+                syncCvCheckbox()
+                Toast.makeText(this@MainActivity, "Capture stopped", Toast.LENGTH_SHORT).show()
+                if (overlayShown) startEspLoop()
+            }
+        }
+
+        override fun onBlocked(message: String) {
+            runOnUiThread {
+                cvMode = false
+                syncCvCheckbox()
+                Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                if (overlayShown) startEspLoop()
             }
         }
     }
@@ -1206,6 +1377,7 @@ class MainActivity : AppCompatActivity(), OnConfigChangeListener, LifecycleObser
     fun onAppDestroy() {
         ecgRunning = false
         stopEspLoop()
+        stopCvService()
         hideEspWindow()
         ecgTimer?.interrupt()
         clockHandler.removeCallbacksAndMessages(null)

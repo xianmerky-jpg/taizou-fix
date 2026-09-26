@@ -74,6 +74,15 @@
             android:textColor="#FFFFFFFF"
             android:textSize="11sp" />
 
+        <CheckBox
+            android:id="@+id/esp_cv"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text=" ESP CV MODE"
+            android:textColor="#FF00FFFF"
+            android:textSize="11sp" />
+
         <Button
             android:id="@+id/esp_diag"
             android:layout_width="match_parent"

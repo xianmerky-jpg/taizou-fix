@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <utility>
 
 #define LOG_TAG "TaizouCore"
@@ -1200,6 +1201,141 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_taizou_paid_TaizouNative_getEspDiag(JNIEnv* env, jobject thiz) {
     std::string s = taizou::g_instance ? taizou::g_instance->espDiag() : std::string("native not ready");
     return env->NewStringUTF(s.c_str());
+}
+
+std::vector<float> TaizouCore::detectBoxes(const int32_t* pixels, int w, int h) {
+    std::vector<float> out;
+    out.push_back(0.0f);  // placeholder for n
+    if (pixels == nullptr || w < 80 || h < 60 || w > 2000 || h > 2000) return out;
+    int n = w * h;
+    // Red mask: vivid reds only (wallhack shade), hue-agnostic integer test.
+    std::vector<uint8_t> mask((size_t)n, 0);
+    long redCount = 0;
+    for (int i = 0; i < n; i++) {
+        int32_t v = pixels[i];
+        int r = v & 0xFF, g = (v >> 8) & 0xFF, b = (v >> 16) & 0xFF;
+        int mx = r > g ? (r > b ? r : b) : (g > b ? g : b);
+        int mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+        if (mx < 115) continue;                    // V > ~0.45
+        if (r <= g || r <= b) continue;            // red dominant (kills yellow/green/blue/white)
+        int delta = mx - mn;
+        int ab = g > b ? g - b : b - g;
+        if (ab * 5 > delta) continue;              // hue within ~12deg of pure red
+        if ((mx - mn) * 100 < mx * 65) continue;   // saturation > ~0.65
+        mask[(size_t)i] = 1;
+        redCount++;
+    }
+    // Fullscreen-red guard (damage vignette, red zone, menus): suppress all.
+    if (redCount > (long)n / 12) return out;
+    // Connected components (4-neighbourhood, union-find over mask pixels).
+    std::vector<int> parent((size_t)n, -1);
+    std::function<int(int)> find = [&](int x) -> int {
+        int r = x;
+        while (parent[(size_t)r] != r) r = parent[(size_t)r];
+        while (parent[(size_t)x] != r) {
+            int nxt = parent[(size_t)x];
+            parent[(size_t)x] = r;
+            x = nxt;
+        }
+        return r;
+    };
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int i = y * w + x;
+            if (!mask[(size_t)i]) continue;
+            parent[(size_t)i] = i;
+            if (x > 0 && mask[(size_t)(i - 1)]) {
+                int a = find(i), b = find(i - 1);
+                if (a != b) parent[(size_t)a] = b;
+            }
+            if (y > 0 && mask[(size_t)(i - w)]) {
+                int a = find(i), b = find(i - w);
+                if (a != b) parent[(size_t)a] = b;
+            }
+        }
+    }
+    struct Box { int x1, y1, x2, y2, area; };
+    std::vector<Box> boxes;
+    boxes.reserve(64);
+    // Map root -> box index.
+    std::vector<int> roots;
+    roots.reserve(64);
+    for (int i = 0; i < n; i++) {
+        if (!mask[(size_t)i]) continue;
+        int r = find(i);
+        int x = i % w, y = i / w;
+        size_t k = 0;
+        for (; k < roots.size(); k++) {
+            if (roots[k] == r) break;
+        }
+        if (k == roots.size()) {
+            if (roots.size() >= 64) continue;
+            roots.push_back(r);
+            boxes.push_back({x, y, x, y, 0});
+        }
+        Box& b = boxes[k];
+        if (x < b.x1) b.x1 = x;
+        if (y < b.y1) b.y1 = y;
+        if (x > b.x2) b.x2 = x;
+        if (y > b.y2) b.y2 = y;
+        b.area++;
+    }
+    // Merge near-touching boxes (occlusion splits), then filter.
+    for (size_t i = 0; i < boxes.size(); i++) {
+        for (size_t j = i + 1; j < boxes.size();) {
+            Box& a = boxes[i];
+            Box& b = boxes[j];
+            bool nearX = a.x1 <= b.x2 + 6 && b.x1 <= a.x2 + 6;
+            bool nearY = a.y1 <= b.y2 + 6 && b.y1 <= a.y2 + 6;
+            if (nearX && nearY) {
+                if (b.x1 < a.x1) a.x1 = b.x1;
+                if (b.y1 < a.y1) a.y1 = b.y1;
+                if (b.x2 > a.x2) a.x2 = b.x2;
+                if (b.y2 > a.y2) a.y2 = b.y2;
+                a.area += b.area;
+                boxes.erase(boxes.begin() + (long)j);
+            } else {
+                j++;
+            }
+        }
+    }
+    int kept = 0;
+    for (auto& b : boxes) {
+        if (kept >= 64) break;
+        int bw = b.x2 - b.x1 + 1, bh = b.y2 - b.y1 + 1;
+        if (b.area < 40) continue;                       // noise/hitmarkers
+        if (b.area > n / 4) continue;                    // fullscreen wash
+        if (bh < 8) continue;
+        out.push_back((float)b.x1);
+        out.push_back((float)b.y1);
+        out.push_back((float)b.x2);
+        out.push_back((float)b.y2);
+        kept++;
+    }
+    out[0] = (float)kept;
+    return out;
+}
+
+extern "C" JNIEXPORT jfloatArray JNICALL
+Java_com_taizou_paid_TaizouNative_detectBoxes(JNIEnv* env, jobject thiz, jintArray pixels, jint w, jint h) {
+    jfloatArray empty = env->NewFloatArray(1);
+    if (empty == nullptr) return nullptr;
+    float zero = 0.0f;
+    env->SetFloatArrayRegion(empty, 0, 1, &zero);
+    if (pixels == nullptr || w <= 0 || h <= 0) return empty;
+    jsize len = env->GetArrayLength(pixels);
+    if (len < w * h || (long)w * h > 4 * 1024 * 1024) return empty;
+    std::vector<int32_t> buf((size_t)w * (size_t)h);
+    env->GetIntArrayRegion(pixels, 0, w * h, buf.data());
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        return empty;
+    }
+    std::vector<float> boxes = TaizouCore::detectBoxes(buf.data(), (int)w, (int)h);
+    jfloatArray out = env->NewFloatArray((jsize)boxes.size());
+    if (out == nullptr) return empty;
+    env->SetFloatArrayRegion(out, 0, (jsize)boxes.size(), boxes.data());
+    return out;
 }
 
 // These ESP method definitions landed after the namespace close above;
